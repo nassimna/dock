@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+apps/desktop/out/
+apps/desktop/release/
+.validation/
+*.tsbuildinfo
+playwright-report/
+test-results/

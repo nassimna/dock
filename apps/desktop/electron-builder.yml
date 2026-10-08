@@ -1,0 +1,22 @@
+appId: dev.dock.desktop
+productName: Dock
+executableName: dock
+directories:
+  output: release
+files:
+  - out/**
+  - resources/**
+  - package.json
+asar: true
+linux:
+  target: AppImage
+  category: Office
+  icon: resources/icon.png
+mac:
+  target: dmg
+  category: public.app-category.productivity
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

@@ -1,0 +1,27 @@
+{
+  "name": "dock",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22.20.0"
+  },
+  "scripts": {
+    "dev": "node scripts/run-desktop.mjs dev",
+    "start": "node scripts/run-desktop.mjs start",
+    "build": "pnpm --filter @dock/desktop build",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "test:desktop": "node scripts/verify-desktop.mjs",
+    "dock": "node apps/cli/src/index.mjs",
+    "package:linux": "pnpm build && pnpm --filter @dock/desktop package:linux"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "24.12.4",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@playwright/test": "1.61.1"
+  }
+}
