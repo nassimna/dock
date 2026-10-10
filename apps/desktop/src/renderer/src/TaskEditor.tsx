@@ -1,31 +1,37 @@
-import { useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { useRef, useState } from "react";
 import { dateTimeInput, type Item, type Snapshot } from "@dock/contracts";
 import { errorMessage, type Dispatch } from "./state";
 
 export function TaskEditor({
   item,
+  defaults,
   snapshot,
   dispatch,
   onClose,
   onDelete,
 }: {
   item: Item | null;
+  defaults: Pick<Item, "space" | "scheduledAt" | "priority">;
   snapshot: Snapshot;
   dispatch: Dispatch;
   onClose: () => void;
   onDelete: (item: Item) => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+  const title = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
-  useEffect(() => {
-    dialog.current?.showModal();
-  }, []);
+  const [scheduled, setScheduled] = useState(dateTimeInput(item ? item.scheduledAt : defaults.scheduledAt));
   async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const scheduled = String(form.get("scheduled"));
     setBusy(true);
     try {
       await dispatch({
@@ -39,7 +45,7 @@ export function TaskEditor({
           priority: form.get("priority") === "on",
           scheduledAt: scheduled ? new Date(scheduled).toISOString() : null,
           recurrence: String(form.get("recurrence")) as Item["recurrence"],
-          linkedNoteId: String(form.get("note")) || null,
+          linkedNoteId: form.get("note") === "none" ? null : String(form.get("note")),
         },
       });
       onClose();
@@ -49,109 +55,91 @@ export function TaskEditor({
     }
   }
   return (
-    <dialog ref={dialog} className="editor-dialog" onCancel={onClose}>
+    <Dialog open onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent className="editor-dialog" aria-describedby={undefined}
+        onOpenAutoFocus={event => { event.preventDefault(); title.current?.focus(); }}>
       <form onSubmit={save}>
         <div className="dialog-heading">
-          <h2>{item ? "Edit task" : "New task"}</h2>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Close task editor"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
+          <DialogTitle>{item ? "Edit task" : "New task"}</DialogTitle>
+
         </div>
         <div className="dialog-body">
-          <label className="field wide">
+          <Label className="field wide">
             Title
-            <input
+            <Input
+              ref={title}
               name="title"
               defaultValue={item?.title ?? ""}
               placeholder="What needs doing?"
               required
               maxLength={500}
-              autoFocus
             />
-          </label>
-          <label className="field wide">
+          </Label>
+          <Label className="field wide">
             Notes
-            <textarea
+            <Textarea
               name="body"
               defaultValue={item?.body ?? ""}
               placeholder="A little context, if you need it"
               maxLength={200000}
               rows={3}
             />
-          </label>
+          </Label>
           <div className="fields">
             <div className="field">
-              <label htmlFor="task-space">Space</label>
-              <select
-                id="task-space"
-                name="space"
-                defaultValue={item?.space ?? "Inbox"}
-              >
-                <option>Inbox</option>
-                <option>Work</option>
-                <option>Personal</option>
-              </select>
+              <Label htmlFor="task-space">Space</Label>
+              <Select name="space" defaultValue={item?.space ?? defaults.space}>
+                <SelectTrigger id="task-space"><SelectValue /></SelectTrigger>
+                <SelectContent position="popper">
+                  <SelectItem value="Inbox">Inbox</SelectItem>
+                  <SelectItem value="Work">Work</SelectItem>
+                  <SelectItem value="Personal">Personal</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <label className="field">
+            <Label className="field">
               Schedule
-              <input
-                type="datetime-local"
-                name="scheduled"
-                defaultValue={dateTimeInput(item?.scheduledAt ?? null)}
-              />
-            </label>
+              <DateTimePicker label="Schedule" value={scheduled} onChange={setScheduled} />
+            </Label>
             <div className="field">
-              <label htmlFor="task-recurrence">Repeat</label>
-              <select
-                id="task-recurrence"
-                name="recurrence"
-                defaultValue={item?.recurrence ?? "none"}
-              >
-                <option value="none">Never</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
+              <Label htmlFor="task-recurrence">Repeat</Label>
+              <Select name="recurrence" defaultValue={item?.recurrence ?? "none"}>
+                <SelectTrigger id="task-recurrence"><SelectValue /></SelectTrigger>
+                <SelectContent position="popper">
+                  <SelectItem value="none">Never</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="field">
-              <label htmlFor="task-note">Linked note</label>
-              <select
-                id="task-note"
-                name="note"
-                defaultValue={item?.linkedNoteId ?? ""}
-              >
-                <option value="">None</option>
-                {snapshot.items
-                  .filter((note) => note.kind === "note")
-                  .map((note) => (
-                    <option key={note.id} value={note.id}>
-                      {note.title}
-                    </option>
-                  ))}
-              </select>
+              <Label htmlFor="task-note">Linked note</Label>
+              <Select name="note" defaultValue={item?.linkedNoteId ?? "none"}>
+                <SelectTrigger id="task-note"><SelectValue /></SelectTrigger>
+                <SelectContent position="popper">
+                  <SelectItem value="none">None</SelectItem>
+                  {snapshot.items.filter(note => note.kind === "note").map(note =>
+                    <SelectItem key={note.id} value={note.id}>{note.title}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
+          <Label className="checkbox-label">
+            <Checkbox
               name="priority"
-              defaultChecked={item?.priority}
+              defaultChecked={item?.priority ?? defaults.priority}
             />{" "}
             Important
-          </label>
+          </Label>
           {item && !item.done && (
             <div className="snooze">
               <span>Remind me again in</span>
               {[10, 30, 60].map((minutes) => (
-                <button
+                <Button variant="outline"
                   key={minutes}
                   type="button"
-                  className="secondary"
+
                   onClick={() =>
                     void dispatch({ type: "item.snooze", id: item.id, minutes })
                       .then(onClose)
@@ -159,7 +147,7 @@ export function TaskEditor({
                   }
                 >
                   {minutes} min
-                </button>
+                </Button>
               ))}
             </div>
           )}
@@ -171,21 +159,22 @@ export function TaskEditor({
         </div>
         <div className="dialog-footer">
           {item ? (
-            <button
+            <Button variant="ghost"
               type="button"
-              className="text-button danger"
+              className="danger"
               onClick={() => onDelete(item)}
             >
               Delete task
-            </button>
+            </Button>
           ) : (
             <span />
           )}
-          <button className="primary" disabled={busy}>
+          <Button variant="default" disabled={busy}>
             {busy ? "Saving…" : "Save task"}
-          </button>
+          </Button>
         </div>
       </form>
-    </dialog>
+      </DialogContent>
+    </Dialog>
   );
 }

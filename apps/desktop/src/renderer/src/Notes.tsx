@@ -1,301 +1,248 @@
-import { useEffect, useRef, useState } from "react";
-import { FileText, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { Check, FileText, Inbox, Link2, List, MoreHorizontal, Plus, Save, Tag, Trash2, Type, X } from "lucide-react";
 import type { Item, Snapshot } from "@dock/contracts";
-import { Empty, TaskRow } from "./components";
-import { errorMessage, type Act, type Dispatch } from "./state";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NoteEditor } from "./NoteEditor";
+import { Empty } from "./components";
+import { errorMessage, type Dispatch } from "./state";
 
-type Draft = {
-  title: string;
-  body: string;
-  space: Item["space"];
+type Draft = Pick<Item, "title" | "body" | "space" | "tags" | "noteStyle"> & {
   status: "saved" | "saving" | "error";
   error: string;
+  generation: number;
 };
+function initialDraft(note: Item): Draft {
+  return { title: note.title, body: note.body, space: note.space, tags: note.tags,
+    noteStyle: note.noteStyle, status: "saved", error: "", generation: 0 };
+}
 
-export function Notes({
-  snapshot,
-  query,
-  dispatch,
-  act,
-  onTask,
-  onDelete,
-}: {
-  snapshot: Snapshot;
-  query: string;
-  dispatch: Dispatch;
-  act: Act;
-  onTask: (item: Item) => void;
-  onDelete: (item: Item) => void;
+export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
+  snapshot: Snapshot; query: string; dispatch: Dispatch;
+  onTask: (item: Item) => void; onDelete: (item: Item) => void;
 }) {
-  const notes = snapshot.items.filter((item) => item.kind === "note");
-  const visible = notes.filter((note) =>
-    `${note.title} ${note.body}`.toLowerCase().includes(query.toLowerCase()),
-  );
+  const notes = snapshot.items.filter(item => item.kind === "note");
   const [selected, setSelected] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const draftRef = useRef<Record<string, Draft>>({});
   const queues = useRef(new Map<string, Promise<unknown>>());
   const pending = useRef(new Map<string, number>());
   const revisions = useRef(new Map<string, number>());
-  const note = visible.find((note) => note.id === selected) ?? visible[0];
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [filter, setFilter] = useState("");
+  const [tagQuery, setTagQuery] = useState("");
+  const [taskQuery, setTaskQuery] = useState("");
+  const [taskError, setTaskError] = useState("");
+  const [linking, setLinking] = useState<string | null>(null);
+  const visible = notes.filter(note => {
+    const draft = drafts[note.id] ?? initialDraft(note);
+    return `${draft.title} ${draft.body} ${draft.tags.join(" ")}`.toLowerCase().includes((filter || query).toLowerCase());
+  });
+  const note = notes.find(note => note.id === selected) ?? visible[0];
+  const draft = note ? drafts[note.id] ?? initialDraft(note) : null;
+
+  useEffect(() => { if (note && !selected) setSelected(note.id); }, [note?.id, selected]);
 
   function put(id: string, draft: Draft) {
     draftRef.current = { ...draftRef.current, [id]: draft };
     setDrafts(draftRef.current);
   }
-
   useEffect(() => {
-    let changed = false;
     const next = { ...draftRef.current };
-    for (const item of notes) {
-      const draft = next[item.id];
-      if (
-        !pending.current.get(item.id) &&
-        draft?.status !== "error" &&
-        revisions.current.get(item.id) !== item.revision
-      ) {
-        revisions.current.set(item.id, item.revision);
-        next[item.id] = {
-          title: item.title,
-          body: item.body,
-          space: item.space,
-          status: "saved",
-          error: "",
-        };
+    let changed = false;
+    for (const note of notes) {
+      if (!pending.current.get(note.id) &&
+          (!next[note.id] || next[note.id]?.status === "saved") && revisions.current.get(note.id) !== note.revision) {
+        revisions.current.set(note.id, note.revision);
+        next[note.id] = initialDraft(note);
         changed = true;
       }
     }
-    if (changed) {
-      draftRef.current = next;
-      setDrafts(next);
-    }
+    if (changed) { draftRef.current = next; setDrafts(next); }
   }, [snapshot.items]);
 
-  function save(item: Item, draft: Draft) {
-    if (!draft.title.trim()) {
-      put(item.id, {
-        ...draft,
-        status: "error",
-        error: "Give the note a title to save it.",
-      });
+  function save(item: Item, content: Draft) {
+    if (!content.title.trim()) {
+      put(item.id, { ...content, status: "error", error: "Give the note a title to save it." });
       return;
     }
     pending.current.set(item.id, (pending.current.get(item.id) ?? 0) + 1);
-    put(item.id, { ...draft, status: "saving", error: "" });
-    const queue = (queues.current.get(item.id) ?? Promise.resolve()).then(
-      async () => {
-        try {
-          const result = await dispatch({
-            type: "item.save",
-            item: {
-              id: item.id,
-              expectedRevision: revisions.current.get(item.id) ?? item.revision,
-              kind: "note",
-              title: draft.title,
-              body: draft.body,
-              space: draft.space,
-              priority: item.priority,
-              scheduledAt: null,
-              recurrence: "none",
-              linkedNoteId: null,
-            },
-          });
-          const saved = result.items.find((note) => note.id === item.id)!;
-          revisions.current.set(item.id, saved.revision);
-          if (
-            pending.current.get(item.id) === 1 &&
-            draftRef.current[item.id]?.status === "saving"
-          )
-            put(item.id, {
-              ...draftRef.current[item.id]!,
-              status: "saved",
-              error: "",
-            });
-        } catch (error) {
-          put(item.id, {
-            ...draftRef.current[item.id]!,
-            status: "error",
-            error: errorMessage(error),
-          });
-        } finally {
-          pending.current.set(item.id, (pending.current.get(item.id) ?? 1) - 1);
-        }
-      },
-    );
+    put(item.id, { ...content, status: "saving", error: "" });
+    const queue = (queues.current.get(item.id) ?? Promise.resolve()).then(async () => {
+      try {
+        const result = await dispatch({ type: "item.save", item: {
+          id: item.id, expectedRevision: revisions.current.get(item.id) ?? item.revision,
+          kind: "note", title: content.title, body: content.body, space: content.space,
+          tags: content.tags, noteStyle: content.noteStyle,
+          priority: item.priority, scheduledAt: null, recurrence: "none", linkedNoteId: null,
+        } });
+        revisions.current.set(item.id, result.items.find(note => note.id === item.id)!.revision);
+        const current = draftRef.current[item.id]!;
+        if (current.generation === content.generation)
+          put(item.id, { ...current, status: "saved", error: "" });
+      } catch (error) {
+        const current = draftRef.current[item.id]!;
+        if (current.generation === content.generation)
+          put(item.id, { ...current, status: "error", error: errorMessage(error) });
+      } finally {
+        pending.current.set(item.id, (pending.current.get(item.id) ?? 1) - 1);
+      }
+    });
     queues.current.set(item.id, queue);
   }
-
-  async function create() {
-    const existing = new Set(notes.map((note) => note.id));
-    try {
-      const result = await dispatch({
-        type: "item.save",
-        item: {
-          kind: "note",
-          title: "Untitled note",
-          body: "",
-          space: "Inbox",
-          priority: false,
-          scheduledAt: null,
-          recurrence: "none",
-          linkedNoteId: null,
-        },
-      });
-      setSelected(
-        result.items.find(
-          (item) => item.kind === "note" && !existing.has(item.id),
-        )!.id,
-      );
-    } catch {
-      /* The shared banner reports the failure. */
-    }
-  }
-
-  const draft = note
-    ? (drafts[note.id] ?? {
-        title: note.title,
-        body: note.body,
-        space: note.space,
-        status: "saved" as const,
-        error: "",
-      })
-    : null;
   function edit(update: Partial<Draft>) {
-    if (note && draft) save(note, { ...draft, ...update });
+    if (!note || !draft) return;
+    const current = draftRef.current[note.id] ?? draft;
+    const next: Draft = { ...current, ...update, error: "", generation: current.generation + 1 };
+    save(note, next);
   }
-
-  return (
-    <>
-      <div className="notes-heading">
-        <p className="muted">A place for the details you’ll need later.</p>
-        <button className="secondary" onClick={() => void create()}>
-          <Plus size={15} /> New note
-        </button>
+  function choose(id: string) {
+    setSelected(id); setFilter(""); setLibraryOpen(false); setTaskError("");
+  }
+  useEffect(() => {
+    const handleSave = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s" &&
+          document.querySelector(".notes-workspace")?.closest("[hidden]") === null && note && draft) {
+        event.preventDefault(); save(note, draftRef.current[note.id] ?? draft);
+      }
+    };
+    window.addEventListener("keydown", handleSave);
+    return () => window.removeEventListener("keydown", handleSave);
+  });
+  async function create() {
+    const existing = new Set(notes.map(note => note.id));
+    try {
+      const result = await dispatch({ type: "item.save", item: {
+        kind: "note", title: "Untitled note", body: "", space: "Inbox", priority: false,
+        scheduledAt: null, recurrence: "none", linkedNoteId: null,
+      } });
+      setSelected(result.items.find(item => item.kind === "note" && !existing.has(item.id))!.id);
+      setFilter(""); setLibraryOpen(false);
+    } catch { /* The shared banner reports the failure. */ }
+  }
+  async function linkTask(task: Item, linked: boolean) {
+    setLinking(task.id); setTaskError("");
+    try {
+      await dispatch({ type: "item.save", item: { ...task, expectedRevision: task.revision, linkedNoteId: linked ? note!.id : null } });
+    } catch (error) { setTaskError(errorMessage(error)); }
+    finally { setLinking(null); }
+  }
+  const linkedTasks = snapshot.items.filter(item => item.kind === "task" && item.linkedNoteId === note?.id);
+  const allTags = [...new Set(snapshot.items.flatMap(item => item.tags).concat(draft?.tags ?? []))].sort();
+  const matches = allTags.filter(tag => tag.toLowerCase().includes(tagQuery.toLowerCase()));
+  function toggleTag(tag: string) {
+    if (!draft || (!draft.tags.includes(tag) && draft.tags.length >= 30)) return;
+    edit({ tags: draft.tags.includes(tag) ? draft.tags.filter(value => value !== tag) : [...draft.tags, tag] });
+  }
+  const library = <>
+    <Input aria-label="Search notes" placeholder="Search notes…" value={filter} onChange={event => setFilter(event.target.value)} />
+    <div className="note-library-list">
+      {visible.map(item => <Button key={item.id} variant="ghost" className="note-library-row"
+        aria-label={`Open note: ${drafts[item.id]?.title || item.title}`} aria-current={note?.id === item.id ? "page" : undefined}
+        onClick={() => choose(item.id)}>
+        <FileText size={14} /><span><strong>{drafts[item.id]?.title || item.title}</strong><small>{drafts[item.id]?.space ?? item.space}</small></span>
+      </Button>)}
+      {!visible.length && <p className="muted">No matching notes.</p>}
+    </div>
+  </>;
+  const font = draft?.noteStyle.font;
+  const style = {
+    ...(font ? { "--note-font": font === "serif" ? 'Georgia, "Times New Roman", serif' : font === "mono" ? '"SFMono-Regular", Consolas, monospace' : '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' } : {}),
+    ...(draft?.noteStyle.size ? { "--note-font-size": `${draft.noteStyle.size / 16}rem` } : {}),
+  } as CSSProperties;
+  return <section className="notes-workspace">
+    <div className="notes-heading">
+      <div className="notes-breadcrumb">
+        <Popover open={libraryOpen} onOpenChange={setLibraryOpen}>
+          <PopoverTrigger asChild><Button variant="ghost" size="sm" className="notes-library-toggle" aria-label="Open note library"><List size={16} /></Button></PopoverTrigger>
+          <PopoverContent align="start" className="notes-library-popover">{library}</PopoverContent>
+        </Popover>
+        <h1>Notes</h1><span className="notes-count">{notes.length}</span>
       </div>
-      {!visible.length ? (
-        <Empty title={query ? "No matching notes" : "Keep a thought here"}>
-          {query
-            ? "Try another search."
-            : "Create a note or capture one from anywhere."}
-        </Empty>
-      ) : (
-        <div className="notes-layout">
-          <div className="note-list">
-            {visible.map((item) => (
-              <button
-                key={item.id}
-                className={`note-choice ${item.id === note?.id ? "active" : ""}`}
-                onClick={() => setSelected(item.id)}
-              >
-                <FileText size={14} />
-                <span>
-                  {drafts[item.id]?.title || item.title}
-                  <small>{drafts[item.id]?.space ?? item.space}</small>
-                </span>
-              </button>
-            ))}
-          </div>
-          {note && draft && (
-            <div className="note-editor">
-              <input
-                className="note-title"
-                aria-label="Note title"
-                value={draft.title}
-                maxLength={500}
-                onChange={(event) => edit({ title: event.target.value })}
-              />
-              <div className="editor-toolbar">
-                <select
-                  aria-label="Note space"
-                  value={draft.space}
-                  onChange={(event) =>
-                    edit({ space: event.target.value as Item["space"] })
-                  }
-                >
-                  <option>Inbox</option>
-                  <option>Work</option>
-                  <option>Personal</option>
-                </select>
-                <span role="status">
-                  {draft.status === "saving"
-                    ? "Saving…"
-                    : draft.status === "error"
-                      ? "Not saved"
-                      : "Saved locally"}
-                </span>
-              </div>
-              <textarea
-                className="note-body"
-                aria-label="Note body"
-                value={draft.body}
-                placeholder="Start writing…"
-                maxLength={200000}
-                onChange={(event) => edit({ body: event.target.value })}
-              />
-              {draft.status === "error" && (
-                <div className="note-error" role="alert">
-                  <p>{draft.error}</p>
-                  <div>
-                    <button
-                      className="secondary"
-                      onClick={() => save(note, draft)}
-                    >
-                      Retry save
-                    </button>
-                    <button
-                      className="secondary"
-                      onClick={() => {
-                        revisions.current.set(note.id, note.revision);
-                        put(note.id, {
-                          title: note.title,
-                          body: note.body,
-                          space: note.space,
-                          status: "saved",
-                          error: "",
-                        });
-                      }}
-                    >
-                      Use saved version
-                    </button>
-                  </div>
-                  <small>Your draft stays here until you replace it.</small>
-                </div>
-              )}
-              <div className="editor-footer">
-                <span>
-                  {draft.body.trim().split(/\s+/).filter(Boolean).length} words
-                </span>
-                <button
-                  className="text-button danger"
-                  onClick={() => onDelete(note)}
-                >
-                  <Trash2 size={14} /> Delete note
-                </button>
-              </div>
-              <div className="linked-tasks">
-                <div className="group-label">Linked tasks</div>
-                {snapshot.items
-                  .filter(
-                    (item) =>
-                      item.kind === "task" && item.linkedNoteId === note.id,
-                  )
-                  .map((item) => (
-                    <TaskRow
-                      key={item.id}
-                      item={item}
-                      snapshot={snapshot}
-                      act={act}
-                      onOpen={onTask}
-                    />
-                  ))}
-                <p className="muted">
-                  Link a task to this note from the task editor.
-                </p>
-              </div>
+      <div className="notes-heading-actions">
+        {note && draft && <div className="note-page-actions">
+          <span className="note-save-state" role="status" aria-live="polite">{draft.status === "saving" ? "Saving…" : draft.status === "error" ? "Not saved" : snapshot.system.platform === "darwin" ? "Saved on this Mac" : "Saved on this device"}</span>
+          <Button size="sm" onClick={() => save(note, draftRef.current[note.id] ?? draft)}><Save size={14} /> Save</Button>
+          <Popover>
+            <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Note appearance"><Type size={16} /></Button></PopoverTrigger>
+            <PopoverContent align="end" className="note-appearance">
+              <label>Font</label><Select value={draft.noteStyle.font ?? "inherit"} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, font: value === "inherit" ? undefined : value as NonNullable<Item["noteStyle"]["font"]> } })}>
+                <SelectTrigger aria-label="Note font"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["system", "Default"], ["serif", "Serif"], ["mono", "Mono"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
+              </Select>
+              <label>Text size</label><Select value={String(draft.noteStyle.size ?? "inherit")} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, size: value === "inherit" ? undefined : Number(value) as 14 | 16 | 18 } })}>
+                <SelectTrigger aria-label="Note text size"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["14", "Small"], ["16", "Default"], ["18", "Large"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
+              </Select>
+              <label className="note-width-option"><Checkbox checked={draft.noteStyle.fullWidth ?? false} onCheckedChange={value => edit({ noteStyle: { ...draft.noteStyle, fullWidth: value === true } })} /> Full width</label>
+            </PopoverContent>
+          </Popover>
+          <Popover>
+            <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="More note actions"><MoreHorizontal size={16} /></Button></PopoverTrigger>
+            <PopoverContent align="end" className="note-action-menu"><Button variant="ghost" className="danger" onClick={() => onDelete(note)}><Trash2 size={14} /> Delete note</Button></PopoverContent>
+          </Popover>
+        </div>}
+        <Button variant="outline" size="sm" onClick={() => void create()}><Plus size={15} /> New note</Button>
+      </div>
+    </div>
+    <div className="notes-layout">
+      {!!notes.length && <aside className="notes-library" aria-label="Note library">{library}</aside>}
+      {!note ? <Empty title={filter || query ? "No matching notes" : "Keep a thought here"}>
+        {filter || query ? "Try another search." : "Create a note or capture one from anywhere."}
+      </Empty> : note && draft && <div className={`note-editor ${draft.noteStyle.fullWidth ? "note-full-width" : ""}`} style={style}>
+        <Input className="note-title" aria-label="Note title" value={draft.title} maxLength={500} onChange={event => edit({ title: event.target.value })} />
+        <div className="note-properties">
+          <div className="note-property"><span className="note-property-label"><Inbox size={16} aria-hidden="true" />Space</span>
+            <div className="note-property-values">
+              <Select value={draft.space} onValueChange={space => edit({ space: space as Item["space"] })}>
+                <SelectTrigger aria-label="Note space" size="sm"><SelectValue /></SelectTrigger>
+                <SelectContent position="popper">{["Inbox", "Work", "Personal"].map(space => <SelectItem key={space} value={space}>{space}</SelectItem>)}</SelectContent>
+              </Select>
             </div>
-          )}
+          </div>
+          <div className="note-property"><span className="note-property-label"><Tag size={16} aria-hidden="true" />Tags</span>
+            <div className="note-property-values">
+              {draft.tags.map(tag => <Button key={tag} variant="secondary" size="sm" className="note-tag-chip" aria-label={`Remove tag ${tag}`} onClick={() => toggleTag(tag)}><span>{tag}</span><X size={12} aria-hidden="true" /></Button>)}
+              <Popover onOpenChange={open => { if (open) setTagQuery(""); }}>
+                <PopoverTrigger asChild><Button variant="ghost" size="sm" className="note-property-add" aria-label="Edit note tags"><Plus size={14} aria-hidden="true" />Add tags</Button></PopoverTrigger>
+                <PopoverContent align="start" className="note-picker">
+                  <Input aria-label="Search or create tag" placeholder="Search or create tag…" maxLength={40} value={tagQuery} onChange={event => setTagQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && tagQuery.trim()) { event.preventDefault(); toggleTag(tagQuery.trim()); setTagQuery(""); } }} />
+                  <div className="note-picker-options">{matches.map(tag => <Button variant="ghost" key={tag} onClick={() => toggleTag(tag)} disabled={!draft.tags.includes(tag) && draft.tags.length >= 30}><Check size={14} className={draft.tags.includes(tag) ? "" : "invisible"} />{tag}</Button>)}</div>
+                  {tagQuery.trim() && !allTags.includes(tagQuery.trim()) && <Button variant="ghost" onClick={() => { toggleTag(tagQuery.trim()); setTagQuery(""); }} disabled={draft.tags.length >= 30}><Plus size={14} /> Create “{tagQuery.trim()}”</Button>}
+                  {!matches.length && !tagQuery.trim() && <p className="muted">Type a name to create your first tag.</p>}
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <div className="note-property"><span className="note-property-label"><Link2 size={16} aria-hidden="true" />Linked tasks</span>
+            <div className="note-property-values">
+              {linkedTasks.map(task => <div className="note-task-chip" key={task.id}>
+                <Button variant="ghost" size="sm" onClick={() => onTask(task)}><Link2 size={14} aria-hidden="true" /><span>{task.title}</span></Button>
+                <Button variant="ghost" size="icon" aria-label={`Unlink ${task.title}`} disabled={linking !== null} onClick={() => void linkTask(task, false)}><X size={12} aria-hidden="true" /></Button>
+              </div>)}
+              <Popover onOpenChange={open => { if (open) { setTaskQuery(""); setTaskError(""); } }}>
+                <PopoverTrigger asChild><Button variant="ghost" size="sm" className="note-property-add" aria-label="Edit linked tasks"><Plus size={14} aria-hidden="true" />Link task</Button></PopoverTrigger>
+                <PopoverContent align="start" className="note-picker">
+                  <Input aria-label="Search tasks to link" placeholder="Search tasks…" value={taskQuery} onChange={event => setTaskQuery(event.target.value)} />
+                  <div className="note-picker-options">{snapshot.items.filter(item => item.kind === "task" && item.title.toLowerCase().includes(taskQuery.toLowerCase())).map(task => <Button key={task.id} variant="ghost" disabled={linking !== null} onClick={() => void linkTask(task, task.linkedNoteId !== note.id)}>
+                    <Check size={14} className={task.linkedNoteId === note.id ? "" : "invisible"} /><span>{task.title}<small>{task.linkedNoteId && task.linkedNoteId !== note.id ? "Moves link from another note" : task.space}</small></span>
+                  </Button>)}</div>
+                  {!snapshot.items.some(item => item.kind === "task" && item.title.toLowerCase().includes(taskQuery.toLowerCase())) && <p className="muted">No matching tasks. Create a task first.</p>}
+                  {taskError && <p role="alert" className="note-error">{taskError}</p>}
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
         </div>
-      )}
-    </>
-  );
+        {draft.status === "error" && <div className="note-error" role="alert"><p>{draft.error}</p><div>
+          <Button variant="outline" size="sm" onClick={() => { revisions.current.set(note.id, note.revision); save(note, draft); }}>Retry save</Button>
+          <Button variant="outline" size="sm" onClick={() => { revisions.current.set(note.id, note.revision); put(note.id, initialDraft(note)); }}>Use saved version</Button>
+        </div><small>Your draft stays here until you replace it.</small></div>}
+        <NoteEditor key={note.id} value={draft.body} onChange={body => edit({ body })} notes={notes} onOpenNote={choose}>
+          <span className="note-sync-state">{!snapshot.sync.connected ? "Local only" : snapshot.sync.phase === "synced" && draft.status === "saved" ? "Synced" : snapshot.sync.phase === "offline" ? "Offline · sync pending" : snapshot.sync.phase === "error" ? "Sync needs attention" : "Sync pending"}</span>
+        </NoteEditor>
+      </div>}
+    </div>
+  </section>;
 }

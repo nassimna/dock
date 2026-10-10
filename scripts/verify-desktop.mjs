@@ -28,6 +28,11 @@ const checks = [];
 let application;
 let display;
 
+async function pick(page, label, option) {
+  await page.getByRole("combobox", { name: label, exact: true }).click();
+  await page.getByRole("option", { name: option, exact: true }).click();
+}
+
 async function launch() {
   application = await _electron.launch({
     executablePath,
@@ -123,7 +128,11 @@ try {
   await expect(main.getByText("A clear start to your day")).toBeVisible();
   passed("empty local database opens through the real Electron entry point");
 
-  await main.getByRole("button", { name: "Close window", exact: true }).click();
+  if (process.platform === "darwin") {
+    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+  } else {
+    await main.getByRole("button", { name: "Close window", exact: true }).click();
+  }
   assert.equal(
     await application.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()
@@ -143,11 +152,12 @@ try {
   await main
     .getByLabel("Notes", { exact: true })
     .fill("Prepare the next steps");
-  await main.getByLabel("Space", { exact: true }).selectOption("Work");
-  const now = new Date();
-  const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  await main.getByLabel("Schedule", { exact: true }).fill(`${date}T23:50`);
-  await main.getByLabel("Repeat", { exact: true }).selectOption("weekly");
+  await pick(main, "Space", "Work");
+  await main.getByRole("button", { name: "Schedule", exact: true }).click();
+  await pick(main, "Schedule time hour", "23");
+  await pick(main, "Schedule time minute", "50");
+  await main.getByRole("dialog", { name: "Schedule picker" }).getByRole("button", { name: "Done", exact: true }).click();
+  await pick(main, "Repeat", "Weekly");
   await main.getByLabel("Important", { exact: true }).check();
   await main.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(
@@ -166,13 +176,16 @@ try {
   await main
     .getByLabel("Title", { exact: true })
     .fill("Invalid recurring task");
-  await main.getByLabel("Repeat", { exact: true }).selectOption("daily");
+  await main.getByRole("button", { name: "Schedule", exact: true }).click();
+  await main.getByRole("button", { name: "Clear", exact: true }).click();
+  await main.getByRole("dialog", { name: "Schedule picker" }).getByRole("button", { name: "Done", exact: true }).click();
+  await pick(main, "Repeat", "Daily");
   await main.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(main.getByRole("dialog").getByRole("alert")).toContainText(
     "Recurring tasks need a scheduled date.",
   );
   await main
-    .getByRole("button", { name: "Close task editor", exact: true })
+    .getByRole("button", { name: "Close", exact: true })
     .click();
   await main
     .getByRole("button", { name: "Dismiss error", exact: true })
@@ -240,11 +253,11 @@ try {
     .getByLabel("Note body")
     .fill("Agenda\nDecisions\nFollow up الجمعة");
   await expect(
-    main.getByRole("status").filter({ hasText: "Saved locally" }),
+    main.getByRole("status").filter({ hasText: process.platform === "darwin" ? "Saved on this Mac" : "Saved on this device" }),
   ).toBeVisible();
   assert.equal(
     (await state(main)).items.find((item) => item.kind === "note").body,
-    "Agenda\nDecisions\nFollow up الجمعة",
+    "Agenda\n\nDecisions\n\nFollow up الجمعة",
   );
   passed("rapid note autosaves retain the last edit and Unicode content");
   await main
@@ -254,7 +267,7 @@ try {
   await expect(
     main.getByRole("alert").filter({ hasText: "Give the note a title" }),
   ).toBeVisible();
-  await main.getByRole("button", { name: "Today", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^Today(?:\s|$)/ }).click();
   await main.getByRole("button", { name: "Notes", exact: true }).click();
   await expect(main.getByLabel("Note title")).toHaveValue("");
   await expect(
@@ -262,23 +275,23 @@ try {
   ).toBeVisible();
   await main.getByLabel("Note title").fill("Friday call");
   await expect(
-    main.getByRole("status").filter({ hasText: "Saved locally" }),
+    main.getByRole("status").filter({ hasText: process.platform === "darwin" ? "Saved on this Mac" : "Saved on this device" }),
   ).toBeVisible();
   assert.equal(
     (await state(main)).items.find((item) => item.kind === "note").body,
-    "Agenda\nDecisions\nFollow up الجمعة\nLatest edit",
+    "Agenda\n\nDecisions\n\nFollow up الجمعة\n\nLatest edit",
   );
   passed(
     "an invalid note draft survives navigation and saves after correction",
   );
   await screenshot(main, "dock-notes.png");
 
-  await main.getByRole("button", { name: "Today", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^Today(?:\s|$)/ }).click();
   await main
     .getByRole("button")
     .filter({ hasText: "Review the proposal" })
     .click();
-  await main.getByLabel("Linked note").selectOption({ label: "Friday call" });
+  await pick(main, "Linked note", "Friday call");
   await main.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(
     main
@@ -314,7 +327,7 @@ try {
   passed("the native always-on-top mini window receives real CLI changes");
 
   await main
-    .getByRole("button", { name: "Complete Review the proposal", exact: true })
+    .getByRole("checkbox", { name: "Complete Review the proposal", exact: true })
     .click();
   const completed = await state(main);
   assert.equal(
@@ -325,13 +338,13 @@ try {
     completed.items.filter((item) => item.title === original.title).length,
     2,
   );
-  await main.getByRole("button", { name: "Done", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^Done(?:\s|$)/ }).click();
   await main
-    .getByRole("button", { name: "Reopen Review the proposal", exact: true })
+    .getByRole("checkbox", { name: "Reopen Review the proposal", exact: true })
     .click();
-  await main.getByRole("button", { name: "Today", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^Today(?:\s|$)/ }).click();
   await main
-    .getByRole("button", { name: "Complete Review the proposal", exact: true })
+    .getByRole("checkbox", { name: "Complete Review the proposal", exact: true })
     .click();
   assert.equal(
     (await state(main)).items.filter((item) => item.title === original.title)
@@ -347,7 +360,7 @@ try {
     "recurrence creates one follow-up; repeated CLI completion stays completed",
   );
 
-  await main.getByRole("button", { name: "All tasks", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^All tasks(?:\s|$)/ }).click();
   await main
     .getByRole("button")
     .filter({ hasText: "Book the appointment" })
@@ -381,11 +394,11 @@ try {
   await main.getByRole("button", { name: "Clear search", exact: true }).click();
   await main.getByRole("button", { name: "Schedule", exact: true }).click();
   await expect(
-    main.getByRole("button", { name: "Next month", exact: true }),
+    main.getByRole("button", { name: "Go to the Next Month", exact: true }),
   ).toBeVisible();
-  await main.getByRole("button", { name: "Next month", exact: true }).click();
+  await main.getByRole("button", { name: "Go to the Next Month", exact: true }).click();
   await main
-    .getByRole("button", { name: "Previous month", exact: true })
+    .getByRole("button", { name: "Go to the Previous Month", exact: true })
     .click();
   await screenshot(main, "dock-schedule.png");
   passed("search empty state and calendar navigation work");
@@ -441,7 +454,7 @@ try {
     await cli("open");
   }
   passed(
-    "a custom shortcut registers with the OS and opens the actual capture window",
+    process.platform === "linux" ? "a custom shortcut registers with the OS and opens the actual capture window" : "a custom shortcut registers with the OS; physical key invocation is unverified",
   );
 
   await main
@@ -449,7 +462,7 @@ try {
     .click();
   await expect(main.locator("html")).toHaveAttribute("data-theme", "light");
   await expect(mini.locator("html")).toHaveAttribute("data-theme", "light");
-  await main.getByRole("button", { name: "All tasks", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^All tasks(?:\s|$)/ }).click();
   await screenshot(main, "dock-light.png");
   await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()

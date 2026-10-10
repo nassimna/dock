@@ -1,6 +1,6 @@
 # Dock
 
-A desktop app for quickly capturing tasks and notes. The first version stores everything locally in SQLite. Mobile and Cloudflare synchronization come later.
+A desktop app for quickly capturing tasks and notes. The app stores everything locally in SQLite. An optional Cloudflare sync backend is included; a mobile client comes later.
 
 The desktop application runs locally with a real SQLite database, native quick capture, a tray, and a pinned mini window. No cloud account is needed.
 
@@ -33,7 +33,7 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm dev
 ```
 
-Open this folder in T3 Code to continue development. The default Mac capture shortcut is `Cmd + Shift + Space`; change it in Preferences if another app uses it. Check capture while another app is focused, the pinned mini window, and reminder permissions on your Mac. Linux validation has passed; macOS device behavior is still pending.
+Open this folder in T3 Code to continue development. The default Mac capture shortcut is `Cmd + Shift + Space`; change it in Preferences if another app uses it. Check capture while another app is focused, the pinned mini window, and reminder permissions on your Mac. Linux X11 and macOS Electron journeys have passed locally; capture across physical Spaces and reminder delivery still need Mac device review.
 
 To run the local checks:
 
@@ -52,6 +52,7 @@ apps/
     src/main/       SQLite, reminders, windows, tray, and local command API
     src/preload/    Sandboxed, typed Electron bridge
     src/renderer/   React UI and application styles
+  sync/             Cloudflare Worker, D1 migrations, and sync setup
   cli/              Local commands for people and agents
 packages/
   contracts/        Runtime schemas and shared types
@@ -66,10 +67,20 @@ This follows inspected patterns from [Ternline](https://github.com/nassimna/tern
 - A configurable global shortcut opens a separate capture window. Its draft remains when dismissed.
 - A separate mini window shares the same data and can stay above other windows where the desktop supports it.
 - Reminders run while Dock is running, including when hidden in the tray. Sleep delays are checked when the computer resumes. Operating-system notification permissions still apply.
-- Dark and light themes, shortcut, quiet hours, and window preferences are saved locally.
+- Today task creation defaults to the local date at 23:59; Inbox creation stays unscheduled. Inline capture and row actions share the same task commands.
+- Notes support headings, inline formatting, lists, checklists, quotes, callouts, toggles, tables, code blocks, colors, an outline, and note links. Slash commands and block controls support insertion, conversion, duplication, and reordering. Save and autosave persist locally; plain notes use Markdown, while rich documents use HTML to retain their formatting through source editing and sync.
+- Notes have labeled spaces, tags, linked tasks, and per-note typography and width preferences.
+- Tasks show a brief completion animation and a completion message with Undo. Reduce Motion disables the animation.
+- Dark and light themes with full color customization, compact/comfortable density, note font and text size, shortcut, quiet hours, and window preferences are saved locally.
 - The CLI sends validated commands to the running app; it never opens a second database writer.
 
-The cloud connection is deferred. Local window updates are real; cross-device synchronization and remote push notifications are not implemented yet. Native always-on-top is unavailable under Wayland, and global shortcuts depend on the compositor's portal support.
+Cross-device sync now has a Workers + D1 backend and an offline queue. Connect an email/password account in Preferences after deploying the backend; see [sync setup](apps/sync/README.md). Sync is not deployed by default. Remote push notifications are not implemented. Native always-on-top is unavailable under Wayland, and global shortcuts depend on the compositor's portal support.
+
+## UI development
+
+The renderer uses checked-in shadcn/ui controls under `apps/desktop/src/renderer/src/components/ui`, configured by `apps/desktop/components.json`. Compose those controls for new screens. Color and radius tokens live in `styles.css`; Tailwind utilities and screen layouts use the same tokens in every window. `ActionButton` adds a tooltip and accessible label to icon actions.
+
+Notes use Tiptap with Markdown for ordinary documents and HTML for rich blocks and formatting. Supported editing is exercised in Electron; the upstream Markdown extension is currently labeled beta. Attachments, Notion databases, page hierarchy, and live collaborative editing are outside this version. References checked 9 October 2026: [shadcn/ui theming](https://ui.shadcn.com/docs/theming) and [Tiptap Markdown](https://tiptap.dev/docs/editor/markdown/getting-started/installation).
 
 ## Agent CLI
 
@@ -91,9 +102,9 @@ Run `pnpm dock help` for the full command list. The CLI uses a private token and
 
 The database is `dock.sqlite` in the OS application-data directory under `Dock`: `~/.config/Dock` on Linux (or `$XDG_CONFIG_HOME/Dock`), `~/Library/Application Support/Dock` on macOS, and `%APPDATA%/Dock` on Windows. Preferences show the exact location. A JSON backup can be exported there; importing backups is deferred.
 
-`pnpm test` runs seven focused SQLite, recurrence, reminder, and local API checks in a disposable profile. `pnpm test:desktop` exercises the real production Electron build after `pnpm build`, including an app restart. On Linux it needs existing `Xvfb` and `xdotool` commands and uses an isolated display. Screenshots go to `.validation/screenshots` or `DOCK_EVIDENCE_DIR`. Test profiles and displays are removed afterward.
+`pnpm test` runs focused SQLite, recurrence, reminder, local API, and sync checks in a disposable profile. `pnpm test:desktop` exercises the real production Electron build after `pnpm build`, including an app restart. On Linux it needs existing `Xvfb` and `xdotool` commands and uses an isolated display. Screenshots go to `.validation/screenshots` or `DOCK_EVIDENCE_DIR`. Test profiles and displays are removed afterward.
 
-The desktop checks use Electron's normal sandbox settings. Renderer Node access is disabled and the isolated preload exposes only validated commands and subscriptions. Physical notification delivery is unverified because the test uses an isolated notification bus. Linux X11 behavior has been exercised; macOS, Windows, and Wayland require their own device checks.
+The desktop checks use Electron's normal sandbox settings. Renderer Node access is disabled and the isolated preload exposes only validated commands and subscriptions. Physical notification delivery is unverified because the test uses an isolated notification bus. Linux X11 and macOS desktop behavior have been exercised locally; Windows and Wayland require their own device checks.
 
 ## Reference inspection
 

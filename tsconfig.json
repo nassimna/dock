@@ -11,10 +11,18 @@
     "erasableSyntaxOnly": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@/*": [
+        "./apps/desktop/src/renderer/src/*"
+      ]
+    }
   },
   "include": [
     "apps/desktop/src",
+    "apps/sync/src",
     "apps/desktop/electron.vite.config.ts",
     "packages/contracts/src"
   ]
