@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { Check, FileText, Inbox, Link2, List, MoreHorizontal, Plus, Save, Tag, Trash2, Type, X } from "lucide-react";
+import { ArrowLeftRight, Check, FileText, Inbox, Link2, List, MoreHorizontal, Plus, Save, Tag, Trash2, Type, X } from "lucide-react";
 import type { Item, Snapshot } from "@dock/contracts";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { NoteEditor } from "./NoteEditor";
-import { Empty } from "./components";
+import { ActionButton, Empty } from "./components";
 import { errorMessage, type Dispatch } from "./state";
 
 type Draft = Pick<Item, "title" | "body" | "space" | "tags" | "noteStyle"> & {
@@ -166,6 +165,10 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
         {note && draft && <div className="note-page-actions">
           <span className="note-save-state" role="status" aria-live="polite">{draft.status === "saving" ? "Saving…" : draft.status === "error" ? "Not saved" : snapshot.system.platform === "darwin" ? "Saved on this Mac" : "Saved on this device"}</span>
           <Button size="sm" onClick={() => save(note, draftRef.current[note.id] ?? draft)}><Save size={14} /> Save</Button>
+          <ActionButton size="sm" className="note-width-toggle" aria-label={draft.noteStyle.fullWidth ? "Use page width" : "Use full width"}
+            aria-pressed={draft.noteStyle.fullWidth ?? false} onClick={() => edit({ noteStyle: { ...draft.noteStyle, fullWidth: !draft.noteStyle.fullWidth } })}>
+            <ArrowLeftRight size={16} /><span>Full width</span>
+          </ActionButton>
           <Popover>
             <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Note appearance"><Type size={16} /></Button></PopoverTrigger>
             <PopoverContent align="end" className="note-appearance">
@@ -175,7 +178,6 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
               <label>Text size</label><Select value={String(draft.noteStyle.size ?? "inherit")} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, size: value === "inherit" ? undefined : Number(value) as 14 | 16 | 18 } })}>
                 <SelectTrigger aria-label="Note text size"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["14", "Small"], ["16", "Default"], ["18", "Large"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
               </Select>
-              <label className="note-width-option"><Checkbox checked={draft.noteStyle.fullWidth ?? false} onCheckedChange={value => edit({ noteStyle: { ...draft.noteStyle, fullWidth: value === true } })} /> Full width</label>
             </PopoverContent>
           </Popover>
           <Popover>

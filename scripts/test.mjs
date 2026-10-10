@@ -11,6 +11,8 @@ const child = spawn(
     "--experimental-strip-types",
     "--test",
     "apps/desktop/src/main/database.test.ts",
+    "apps/desktop/src/main/appearance.test.ts",
+    "apps/desktop/src/renderer/src/lib/theme.test.ts",
     "apps/desktop/src/main/note-properties.test.ts",
     "apps/desktop/src/main/reminders.test.ts",
     "apps/desktop/src/main/local-api.test.ts",

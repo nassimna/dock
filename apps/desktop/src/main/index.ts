@@ -104,7 +104,7 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
           }
       : {}),
     title: role === "main" ? "Dock" : `Dock ${role}`,
-    icon: join(__dirname, "../../resources/icon.png"),
+    icon: join(__dirname, "../../resources/app-icon.png"),
     backgroundColor:
       database.snapshot().settings.theme === "dark" ? "#202827" : "#ffffff",
     resizable: role !== "capture",

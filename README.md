@@ -20,7 +20,7 @@ pnpm build
 pnpm start
 ```
 
-`pnpm dev` launches Electron with live UI updates. `pnpm start` opens the production build. To build a Linux installer locally, run `pnpm package:linux`; the AppImage appears in `apps/desktop/release`. macOS and Windows packaging targets are configured but need validation on those operating systems.
+`pnpm dev` launches Electron with live UI updates. `pnpm start` opens the production build. Run `pnpm package:mac` for a macOS DMG or `pnpm package:linux` for a Linux AppImage; installers appear in `apps/desktop/release`. The Apple Silicon Mac build has been tested locally with ad-hoc signing. Developer ID signing and notarization are not configured, and Windows packaging still needs validation.
 
 ## Continue on a Mac
 
@@ -69,7 +69,7 @@ This follows inspected patterns from [Ternline](https://github.com/nassimna/tern
 - Reminders run while Dock is running, including when hidden in the tray. Sleep delays are checked when the computer resumes. Operating-system notification permissions still apply.
 - Today task creation defaults to the local date at 23:59; Inbox creation stays unscheduled. Inline capture and row actions share the same task commands.
 - Notes support headings, inline formatting, lists, checklists, quotes, callouts, toggles, tables, code blocks, colors, an outline, and note links. Slash commands and block controls support insertion, conversion, duplication, and reordering. Save and autosave persist locally; plain notes use Markdown, while rich documents use HTML to retain their formatting through source editing and sync.
-- Notes have labeled spaces, tags, linked tasks, and per-note typography and width preferences.
+- Notes have labeled spaces, tags, linked tasks, and per-note typography preferences. The writing area fills the available height; the Full width button beside Save expands the page and remembers the choice for each note.
 - Tasks show a brief completion animation and a completion message with Undo. Reduce Motion disables the animation.
 - Dark and light themes with full color customization, compact/comfortable density, note font and text size, shortcut, quiet hours, and window preferences are saved locally.
 - The CLI sends validated commands to the running app; it never opens a second database writer.
