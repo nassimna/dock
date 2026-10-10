@@ -470,7 +470,7 @@ export function App() {
               </ActionButton>
             </div>
           </aside>
-          <main ref={main} className="main">
+          <main ref={main} className={`main ${view === "notes" ? "main-notes" : ""}`}>
             {view !== "notes" && <div className="main-heading">
               <div>
                 <h1>
@@ -536,7 +536,7 @@ export function App() {
                 </ActionButton>
               </div>
             )}
-            <div hidden={view !== "notes"}>
+            <div className="notes-view" hidden={view !== "notes"}>
               <Notes
                 snapshot={snapshot}
                 query={query}

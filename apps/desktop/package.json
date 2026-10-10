@@ -7,6 +7,7 @@
   "description": "Quick capture, tasks, and notes for desktop",
   "scripts": {
     "build": "electron-vite build",
+    "package:mac": "electron-builder --mac dmg --publish never",
     "package:linux": "electron-builder --linux AppImage --publish never"
   },
   "dependencies": {
