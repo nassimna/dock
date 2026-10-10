@@ -6,3 +6,6 @@ apps/desktop/release/
 *.tsbuildinfo
 playwright-report/
 test-results/
+apps/sync/.wrangler/
+apps/sync/.dev.vars*
+apps/sync/.env*

@@ -22,6 +22,7 @@ test("local commands require the profile token and reject browser origins and ma
   const snapshot: Snapshot = {
     items: [],
     settings: settingsSchema.parse({}),
+    sync: { connected: false, endpoint: "", email: "", phase: "disconnected", pending: 0, conflicts: 0, lastSyncedAt: null, error: "" },
     system: {
       platform: process.platform,
       version: "0.1.0",
@@ -74,6 +75,11 @@ test("local commands require the profile token and reject browser origins and ma
       (await send({ type: "window", action: "quit" }, auth)).status,
       400,
     );
+    assert.equal((await send({ type: "capture.resize", height: 224 }, auth)).status, 400);
+    assert.equal((await send({
+      type: "sync.login", endpoint: "https://sync.example.com",
+      email: "owner@example.com", password: "not-a-real-password",
+    }, auth)).status, 400);
     const accepted = await send({ type: "snapshot" }, auth);
     assert.equal(accepted.status, 200);
     assert.deepEqual(await accepted.json(), snapshot);

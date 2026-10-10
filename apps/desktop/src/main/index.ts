@@ -9,12 +9,15 @@ import {
   Notification,
   powerMonitor,
   screen,
+  safeStorage,
+  shell,
   Tray,
 } from "electron";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseCommand,
+  syncCredentialsSchema,
   type Command,
   type Snapshot,
   type WindowRole,
@@ -22,6 +25,7 @@ import {
 import { DockDatabase } from "./database";
 import { startLocalApi } from "./local-api";
 import { checkReminders } from "./reminders";
+import { DockSync } from "./sync";
 
 app.setName("Dock");
 const dataDirectory =
@@ -32,6 +36,9 @@ app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
 
 const windows = new Map<WindowRole, BrowserWindow>();
 let database: DockDatabase;
+let sync: DockSync;
+let syncStopped = false;
+const sessionPath = join(dataDirectory, "sync-session.bin");
 let tray: Tray | null = null;
 let quitting = false;
 let shortcutRegistered = false;
@@ -45,6 +52,7 @@ const topmostSupported = !(
 function snapshot(): Snapshot {
   return {
     ...database.snapshot(),
+    sync: sync.status(),
     system: {
       platform: process.platform,
       version: app.getVersion(),
@@ -78,20 +86,29 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
   }
   const size =
     role === "main"
-      ? { width: 880, height: 740, minWidth: 680, minHeight: 540 }
+      ? { width: 780, height: 600, minWidth: 680, minHeight: 480 }
       : role === "capture"
-        ? { width: 480, height: 460, minWidth: 440, minHeight: 420 }
+        ? { width: 420, height: 224, minWidth: 380, minHeight: 180 }
         : { width: 360, height: 460, minWidth: 320, minHeight: 320 };
   const window = new BrowserWindow({
     ...size,
     show: false,
-    frame: false,
+    frame: process.platform === "darwin" && role !== "capture",
+    ...(process.platform === "darwin"
+      ? role === "capture"
+        ? { type: "panel" }
+        : {
+            titleBarStyle: "hiddenInset" as const,
+            trafficLightPosition: { x: 16, y: 17 },
+            titleBarOverlay: true,
+          }
+      : {}),
     title: role === "main" ? "Dock" : `Dock ${role}`,
     icon: join(__dirname, "../../resources/icon.png"),
     backgroundColor:
       database.snapshot().settings.theme === "dark" ? "#202827" : "#ffffff",
     resizable: role !== "capture",
-    alwaysOnTop: role !== "main" && topmostSupported,
+    alwaysOnTop: role === "mini" && topmostSupported,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: true,
@@ -99,8 +116,16 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
       nodeIntegration: false,
     },
   });
+  if (process.platform === "darwin" && role !== "capture")
+    window.setWindowButtonVisibility(true);
+  if (role === "capture" && topmostSupported)
+    window.setAlwaysOnTop(database.snapshot().settings.capturePinned);
   windows.set(role, window);
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (URL.canParse(url) && ["http:", "https:", "mailto:"].includes(new URL(url).protocol))
+      void shell.openExternal(url).catch(error => console.error("Dock could not open link:", error));
+    return { action: "deny" };
+  });
   window.webContents.on("will-navigate", (event) => event.preventDefault());
   window.on("close", (event) => {
     if (quitting) return;
@@ -174,7 +199,27 @@ async function dispatch(
   command: Command,
   sender?: BrowserWindow,
 ): Promise<Snapshot> {
-  if (command.type === "window") {
+  if (command.type === "capture.resize") {
+    if (!sender || sender !== windows.get("capture"))
+      throw new Error("Only quick capture can resize its panel.");
+    const bounds = sender.getBounds();
+    const height = Math.min(command.height, screen.getDisplayMatching(bounds).workArea.height);
+    if (bounds.height !== height) sender.setSize(bounds.width, height);
+    return snapshot();
+  } else if (command.type === "sync.login" || command.type === "sync.signup") {
+    if (!safeStorage.isEncryptionAvailable() ||
+        (process.platform === "linux" && safeStorage.getSelectedStorageBackend() === "basic_text"))
+      throw new Error("Secure credential storage is unavailable. Enable your system keychain before signing in.");
+    const credentials = await sync.authenticate(command);
+    writeFileSync(`${sessionPath}.tmp`, safeStorage.encryptString(JSON.stringify(credentials)), { mode: 0o600 });
+    renameSync(`${sessionPath}.tmp`, sessionPath);
+    sync.restore(credentials);
+  } else if (command.type === "sync.now") {
+    await sync.sync();
+  } else if (command.type === "sync.disconnect") {
+    if (existsSync(sessionPath)) unlinkSync(sessionPath);
+    await sync.disconnect();
+  } else if (command.type === "window") {
     if (["main", "capture", "mini"].includes(command.action)) {
       await openWindow(command.action as WindowRole);
     } else if (command.action === "export") {
@@ -230,6 +275,8 @@ async function dispatch(
       if (changed) globalShortcut.unregister(command.settings.shortcut);
       throw error;
     }
+    if (topmostSupported && previous.capturePinned !== command.settings.capturePinned)
+      windows.get("capture")?.setAlwaysOnTop(command.settings.capturePinned);
     if (changed) {
       globalShortcut.unregister(previous.shortcut);
       shortcutRegistered = true;
@@ -238,6 +285,7 @@ async function dispatch(
       app.setLoginItemSettings({ openAtLogin: command.settings.launchAtLogin });
   } else {
     database.execute(command);
+    if (command.type.startsWith("item.")) sync.localChanged();
   }
   if (command.type !== "snapshot") broadcast();
   return snapshot();
@@ -253,6 +301,14 @@ if (!app.requestSingleInstanceLock()) {
       const directory = app.getPath("userData");
       mkdirSync(directory, { recursive: true });
       database = new DockDatabase(join(directory, "dock.sqlite"));
+      sync = new DockSync(database, broadcast);
+      if (existsSync(sessionPath)) {
+        try {
+          sync.restore(syncCredentialsSchema.parse(JSON.parse(safeStorage.decryptString(readFileSync(sessionPath)))));
+        } catch {
+          sync.restoreFailed();
+        }
+      }
       ipcMain.handle("dock:command", async (event, input: unknown) => {
         const sender = [...windows.values()].find(
           (window) => window.webContents === event.sender,
@@ -304,8 +360,13 @@ if (!app.requestSingleInstanceLock()) {
   app.on("window-all-closed", () => {
     if (!tray) app.quit();
   });
-  app.on("before-quit", () => {
+  app.on("before-quit", (event) => {
     quitting = true;
+    if (sync && !syncStopped) {
+      event.preventDefault();
+      syncStopped = true;
+      void sync.stop().finally(() => app.quit());
+    }
   });
   app.on("will-quit", () => {
     globalShortcut.unregisterAll();

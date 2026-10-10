@@ -1,5 +1,7 @@
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   main: {
@@ -15,15 +17,18 @@ export default defineConfig({
     },
   },
   renderer: {
+    resolve: {
+      alias: { "@": fileURLToPath(new URL("./src/renderer/src", import.meta.url)) },
+    },
     plugins: [
       react(),
+      tailwindcss(),
       {
         name: "dock-development-csp",
         transformIndexHtml(html, context) {
           if (!context.server) return html;
           return html
             .replace("script-src 'self'", "script-src 'self' 'unsafe-inline'")
-            .replace("style-src 'self'", "style-src 'self' 'unsafe-inline'")
             .replace("connect-src 'self'", "connect-src 'self' ws:");
         },
       },

@@ -26,6 +26,14 @@ test("tasks, notes, preferences, and linked content survive reopening the SQLite
   const filename = join(directory, "dock.sqlite");
   let database = new DockDatabase(filename);
   try {
+    assert.equal(database.snapshot().settings.density, "compact");
+    assert.equal(database.snapshot().settings.noteFont, "system");
+    assert.equal(database.snapshot().settings.capturePinned, true);
+    assert.deepEqual(database.snapshot().settings.themeColors, { dark: {}, light: {} });
+    assert.throws(() => commandSchema.parse({
+      type: "settings.save",
+      settings: { ...database.snapshot().settings, themeColors: { dark: { background: "url(https://example.com)" }, light: {} } },
+    }));
     const note = save(database, {
       kind: "note",
       title: "Call notes",
@@ -45,7 +53,15 @@ test("tasks, notes, preferences, and linked content survive reopening the SQLite
       settings: {
         ...database.snapshot().settings,
         theme: "light",
+        themeColors: {
+          dark: { background: "#171923", primary: "#c4a1ff" },
+          light: { background: "#ffffff", card: "#f6f5ff", foreground: "#252035", mutedForeground: "#6f6484", border: "#ded8ef", primary: "#6940bf" },
+        },
+        density: "comfortable",
+        noteFont: "serif",
+        noteSize: 18,
         shortcut: "Control+Alt+J",
+        capturePinned: false,
       },
     });
     database.close();
@@ -61,7 +77,15 @@ test("tasks, notes, preferences, and linked content survive reopening the SQLite
       note.id,
     );
     assert.equal(restored.settings.theme, "light");
+    assert.deepEqual(restored.settings.themeColors, {
+      dark: { background: "#171923", primary: "#c4a1ff" },
+      light: { background: "#ffffff", card: "#f6f5ff", foreground: "#252035", mutedForeground: "#6f6484", border: "#ded8ef", primary: "#6940bf" },
+    });
+    assert.equal(restored.settings.density, "comfortable");
+    assert.equal(restored.settings.noteFont, "serif");
+    assert.equal(restored.settings.noteSize, 18);
     assert.equal(restored.settings.shortcut, "Control+Alt+J");
+    assert.equal(restored.settings.capturePinned, false);
   } finally {
     database.close();
     rmSync(directory, { recursive: true });

@@ -1,15 +1,17 @@
+import { Button } from "@/components/ui/button";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, FileText, ListTodo, Plus, Star } from "lucide-react";
-import type { Item, Snapshot } from "@dock/contracts";
-import { Shortcut } from "./components";
+import { CalendarDays, FileText, ListTodo, Plus, SlidersHorizontal, Star } from "lucide-react";
+import type { Item } from "@dock/contracts";
 import type { Act, Dispatch } from "./state";
 
 export function Capture({
-  snapshot,
   dispatch,
   act,
 }: {
-  snapshot: Snapshot;
   dispatch: Dispatch;
   act: Act;
 }) {
@@ -19,11 +21,19 @@ export function Capture({
   const [priority, setPriority] = useState(false);
   const [scheduled, setScheduled] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showOptions, setShowOptions] = useState(false);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => window.dock.onCapture(() => input.current?.focus()), []);
   useEffect(() => {
     input.current?.focus();
+    const shell = input.current!.closest(".app-shell")!;
+    const resize = new ResizeObserver(() => {
+      const height = Math.min(600, Math.max(180, Math.ceil(shell.getBoundingClientRect().height)));
+      void window.dock.dispatch({ type: "capture.resize", height }).catch(console.error);
+    });
+    resize.observe(shell);
+    return () => resize.disconnect();
   }, []);
   async function save() {
     if (!text.trim() || busy) return;
@@ -50,6 +60,7 @@ export function Capture({
       setPriority(false);
       setScheduled("");
       setShowSchedule(false);
+      setShowOptions(false);
       await dispatch({ type: "window", action: "hide" });
     } catch {
       /* The shared error banner keeps the draft available. */
@@ -66,7 +77,7 @@ export function Capture({
       }}
     >
       <div className="capture-modes">
-        <button
+        <Button variant="ghost"
           type="button"
           aria-pressed={kind === "task"}
           onClick={() => {
@@ -75,8 +86,8 @@ export function Capture({
           }}
         >
           <ListTodo size={15} /> Task
-        </button>
-        <button
+        </Button>
+        <Button variant="ghost"
           type="button"
           aria-pressed={kind === "note"}
           onClick={() => {
@@ -85,14 +96,15 @@ export function Capture({
           }}
         >
           <FileText size={15} /> Note
-        </button>
+        </Button>
       </div>
-      <textarea
+      <Textarea
         ref={input}
         className="capture-text"
+        rows={3}
         aria-label="Capture text"
         placeholder={
-          kind === "task" ? "What’s on your mind?" : "A thought worth keeping…"
+          kind === "task" ? "Add a task…" : "Write a note…"
         }
         value={text}
         maxLength={200000}
@@ -104,64 +116,57 @@ export function Capture({
           }
         }}
       />
-      <div className="capture-options">
-        {kind === "task" && (
-          <>
-            <button
-              type="button"
-              className={priority ? "active" : ""}
-              aria-pressed={priority}
-              onClick={() => setPriority(!priority)}
-            >
-              <Star size={15} /> Important
-            </button>
-            <button
-              type="button"
-              className={showSchedule ? "active" : ""}
-              aria-expanded={showSchedule}
-              onClick={() => setShowSchedule(!showSchedule)}
-            >
-              <CalendarDays size={15} /> Schedule
-            </button>
-          </>
-        )}
-        <select
-          aria-label="Capture space"
-          value={space}
-          onChange={(event) => setSpace(event.target.value as Item["space"])}
-        >
-          <option>Inbox</option>
-          <option>Work</option>
-          <option>Personal</option>
-        </select>
-      </div>
-      {showSchedule && kind === "task" && (
-        <label className="field schedule-field">
-          Remind me at
-          <input
-            type="datetime-local"
-            value={scheduled}
-            onChange={(event) => setScheduled(event.target.value)}
-          />
-        </label>
+      {showOptions && (
+        <div id="capture-details" className="capture-details">
+          <div className="capture-options">
+            {kind === "task" && (
+              <>
+                <Button variant="ghost"
+                  type="button"
+                  className={priority ? "active" : ""}
+                  aria-pressed={priority}
+                  onClick={() => setPriority(!priority)}
+                >
+                  <Star size={15} /> Important
+                </Button>
+                <Button variant="ghost"
+                  type="button"
+                  className={showSchedule ? "active" : ""}
+                  aria-expanded={showSchedule}
+                  onClick={() => setShowSchedule(!showSchedule)}
+                >
+                  <CalendarDays size={15} /> Schedule
+                </Button>
+              </>
+            )}
+            <Select value={space} onValueChange={value => setSpace(value as Item["space"])}>
+              <SelectTrigger aria-label="Capture space" size="sm"><SelectValue /></SelectTrigger>
+              <SelectContent position="popper">
+                <SelectItem value="Inbox">Inbox</SelectItem>
+                <SelectItem value="Work">Work</SelectItem>
+                <SelectItem value="Personal">Personal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {showSchedule && kind === "task" && (
+            <Label className="field schedule-field">
+              Remind me at
+              <DateTimePicker label="Capture schedule" value={scheduled} onChange={setScheduled} />
+            </Label>
+          )}
+          <Button variant="ghost" size="sm" type="button" className="capture-main"
+            onClick={() => act({ type: "window", action: "main" })}>Open Dock</Button>
+        </div>
       )}
       <div className="capture-footer">
-        <span>
-          <kbd>Enter</kbd> saves · <kbd>Shift + Enter</kbd> adds a line
-          <br />
-          <Shortcut value={snapshot.settings.shortcut} /> opens from anywhere
-        </span>
-        <button className="primary" disabled={!text.trim() || busy}>
+        <Button variant="ghost" size="sm" type="button" className={showOptions || priority || scheduled || space !== "Inbox" ? "active" : ""}
+          aria-expanded={showOptions} aria-controls="capture-details" onClick={() => setShowOptions(!showOptions)}>
+          <SlidersHorizontal size={14} /> Options{space !== "Inbox" && <span>· {space}</span>}
+        </Button>
+        <Button variant="default" disabled={!text.trim() || busy}>
           <Plus size={15} /> {busy ? "Saving…" : "Capture"}
-        </button>
+        </Button>
       </div>
-      <button
-        type="button"
-        className="text-button capture-main"
-        onClick={() => act({ type: "window", action: "main" })}
-      >
-        Open Dock
-      </button>
     </form>
   );
 }

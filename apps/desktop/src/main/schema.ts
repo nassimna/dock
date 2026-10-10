@@ -30,3 +30,37 @@ CREATE TABLE IF NOT EXISTS settings (
 
 PRAGMA user_version = 1;
 `;
+
+export const syncSchema = `
+CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sync_items (
+  item_id TEXT PRIMARY KEY REFERENCES items(id),
+  remote_version INTEGER NOT NULL DEFAULT 0,
+  dirty INTEGER NOT NULL DEFAULT 1,
+  mutation_id TEXT NOT NULL DEFAULT (lower(hex(randomblob(16))))
+);
+CREATE TABLE IF NOT EXISTS sync_conflicts (item_id TEXT PRIMARY KEY REFERENCES items(id));
+INSERT OR IGNORE INTO sync_items(item_id) SELECT id FROM items;
+CREATE TRIGGER IF NOT EXISTS sync_item_created AFTER INSERT ON items
+  WHEN NOT EXISTS (SELECT 1 FROM sync_meta WHERE key = 'applying_remote') BEGIN
+    INSERT INTO sync_items(item_id) VALUES(NEW.id);
+  END;
+CREATE TRIGGER IF NOT EXISTS sync_item_updated
+  AFTER UPDATE OF title, body, space, priority, done, scheduled_at, recurrence, linked_note_id, deleted_at ON items
+  WHEN NOT EXISTS (SELECT 1 FROM sync_meta WHERE key = 'applying_remote') BEGIN
+    UPDATE sync_items SET dirty = 1, mutation_id = lower(hex(randomblob(16))) WHERE item_id = NEW.id;
+  END;
+PRAGMA user_version = 2;
+`;
+
+export const notesSchema = `
+ALTER TABLE items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE items ADD COLUMN note_style TEXT NOT NULL DEFAULT '{}';
+DROP TRIGGER sync_item_updated;
+CREATE TRIGGER sync_item_updated
+  AFTER UPDATE OF title, body, space, priority, done, scheduled_at, recurrence, linked_note_id, deleted_at, tags, note_style ON items
+  WHEN NOT EXISTS (SELECT 1 FROM sync_meta WHERE key = 'applying_remote') BEGIN
+    UPDATE sync_items SET dirty = 1, mutation_id = lower(hex(randomblob(16))) WHERE item_id = NEW.id;
+  END;
+PRAGMA user_version = 3;
+`;

@@ -11,8 +11,10 @@ const child = spawn(
     "--experimental-strip-types",
     "--test",
     "apps/desktop/src/main/database.test.ts",
+    "apps/desktop/src/main/note-properties.test.ts",
     "apps/desktop/src/main/reminders.test.ts",
     "apps/desktop/src/main/local-api.test.ts",
+    "apps/sync/src/sync.test.ts",
   ],
   { stdio: "inherit", env: { ...process.env, DOCK_TEST_ROOT: directory } },
 );
