@@ -92,9 +92,6 @@ const themeColorsSchema = z.object({
 });
 export const settingsSchema = z.object({
   theme: z.enum(["dark", "light"]).default("dark"),
-  uiPreset: z.enum(["ink", "precision", "native", "studio"]).default("ink"),
-  colorPreset: z.enum(["Graphite", "Forest", "Violet"]).default("Violet"),
-  rounding: z.enum(["square", "subtle", "balanced", "rounded"]).default("subtle"),
   themeColors: z.object({
     dark: themeColorsSchema.default({}),
     light: themeColorsSchema.default({}),

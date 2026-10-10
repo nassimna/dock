@@ -185,17 +185,16 @@ export function App() {
   }, [view, space]);
   useEffect(() => {
     document.documentElement.dataset.theme = snapshot?.settings.theme ?? "dark";
-    document.documentElement.dataset.uiPreset = snapshot?.settings.uiPreset ?? "ink";
     document.documentElement.dataset.density = snapshot?.settings.density ?? "compact";
     document.documentElement.dataset.window = role;
     document.documentElement.dataset.noteFont = snapshot?.settings.noteFont ?? "system";
     document.documentElement.style.setProperty("--note-font-size", `${(snapshot?.settings.noteSize ?? 16) / 16}rem`);
     if (snapshot) {
-      for (const [property, value] of Object.entries(themeStyle(snapshot.settings))) {
+      for (const [property, value] of Object.entries(themeStyle(snapshot.settings.theme, snapshot.settings.themeColors[snapshot.settings.theme]))) {
         document.documentElement.style.setProperty(property, String(value));
       }
     }
-  }, [snapshot?.settings.theme, snapshot?.settings.themeColors, snapshot?.settings.uiPreset, snapshot?.settings.colorPreset, snapshot?.settings.rounding, snapshot?.settings.density, snapshot?.settings.noteFont, snapshot?.settings.noteSize]);
+  }, [snapshot?.settings.theme, snapshot?.settings.themeColors, snapshot?.settings.density, snapshot?.settings.noteFont, snapshot?.settings.noteSize]);
   useEffect(() => {
     if (searchOpen) search.current?.focus();
   }, [searchOpen]);
@@ -437,12 +436,12 @@ export function App() {
                   (id === "today" ? item.scheduledAt && localDate(new Date(item.scheduledAt)) <= today :
                    id === "inbox" ? item.space === "Inbox" : id === "starred" ? item.priority : true)).length;
                 return (
-                  <ActionButton aria-label={title} size="default" key={id} className={`nav-button ${view === id && (view !== "all" || space === "all") ? "active" : ""}`}
+                  <Button variant="ghost" key={id} className={`nav-button ${view === id && (view !== "all" || space === "all") ? "active" : ""}`}
                     aria-current={view === id && (view !== "all" || space === "all") ? "page" : undefined}
                     onClick={() => { setView(id); setSpace("all"); }}>
-                    <Icon size={16} /><span className="nav-label">{title}</span>
+                    <Icon size={16} /><span>{title}</span>
                     {!["notes", "schedule"].includes(id) && count > 0 && <Badge variant="secondary" className="nav-count">{count}</Badge>}
-                  </ActionButton>
+                  </Button>
                 );
               })}
             </nav>
@@ -450,24 +449,24 @@ export function App() {
             <div className="sidebar-label">Spaces</div>
             <nav className="space-navigation" aria-label="Spaces">
               {(["Work", "Personal"] as const).map(name => (
-                <ActionButton aria-label={name} size="default" key={name} className={`nav-button ${view === "all" && space === name ? "active" : ""}`}
+                <Button variant="ghost" key={name} className={`nav-button ${view === "all" && space === name ? "active" : ""}`}
                   aria-current={view === "all" && space === name ? "page" : undefined}
                   onClick={() => { setSpace(name); setView("all"); }}>
-                  <Circle size={10} /><span className="space-initial" aria-hidden="true">{name[0]}</span><span className="nav-label">{name}</span>
+                  <Circle size={10} /><span>{name}</span>
                   <small>{snapshot.items.filter(item => item.kind === "task" && !item.done && item.space === name).length || ""}</small>
-                </ActionButton>
+                </Button>
               ))}
             </nav>
             </div>
             <div className="sidebar-bottom">
-              <ActionButton aria-label="Quick capture" size="default" className="nav-button" onClick={() => act({ type: "window", action: "capture" })}>
-                <Zap size={16} /><span className="nav-label">Quick capture</span>
-              </ActionButton>
-              <ActionButton aria-label="Preferences" size="default" className={`nav-button ${view === "settings" ? "active" : ""}`}
+              <Button variant="ghost" className="nav-button" onClick={() => act({ type: "window", action: "capture" })}>
+                <Zap size={16} /><span>Quick capture</span>
+              </Button>
+              <Button variant="ghost" className={`nav-button ${view === "settings" ? "active" : ""}`}
                 aria-current={view === "settings" ? "page" : undefined}
                 onClick={() => setView("settings")}>
-                <Settings2 size={16} /><span className="nav-label">Preferences</span>
-              </ActionButton>
+                <Settings2 size={16} /><span>Preferences</span>
+              </Button>
             </div>
           </aside>
           <main ref={main} className="main">

@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
 import { Badge } from "@/components/ui/badge";
-import { colorPresets, interfacePresets, roundingLevels, themeStyle } from "@/lib/theme";
+import { themePresets, themeStyle } from "@/lib/theme";
 import { useState } from "react";
 import { Bell, Download, Keyboard, Palette, Terminal } from "lucide-react";
 import { settingsSchema, type Settings as Preferences, type Snapshot } from "@dock/contracts";
@@ -84,26 +84,12 @@ export function Settings({
         </div>
         <section>
           <h2><Palette size={17} /> Appearance</h2>
-          <p>Choose a layout, then make it yours with a palette and corner style. Preferences stay on this device.</p>
-          <div className="interface-presets" role="group" aria-label="Interface presets">
-            {Object.entries(interfacePresets).map(([id, preset]) => <Button key={id} variant="outline" type="button"
-              className="interface-preset" aria-pressed={draft.uiPreset === id}
-              onClick={() => setDraft({ ...draft, uiPreset: id as Preferences["uiPreset"] })}>
-              <span className={`interface-thumbnail ${id}`} aria-hidden="true"><i /><i /><i /></span>
-              <strong>{preset.name}{id === "ink" && <small>Default</small>}</strong><span>{preset.description}</span>
-            </Button>)}
-          </div>
+          <p>Make Dock yours. Preview your colors, then save them across your windows. Preferences stay on this device.</p>
           <div className="fields">
             <Label className="field">Theme
               <Select value={mode} onValueChange={theme => act({ type: "settings.save", settings: { ...snapshot.settings, theme: theme as Preferences["theme"] } })}>
                 <SelectTrigger aria-label="Theme"><SelectValue /></SelectTrigger>
                 <SelectContent position="popper"><SelectItem value="dark">Dark</SelectItem><SelectItem value="light">Light</SelectItem></SelectContent>
-              </Select>
-            </Label>
-            <Label className="field">Corners
-              <Select value={draft.rounding} onValueChange={rounding => setDraft({ ...draft, rounding: rounding as Preferences["rounding"] })}>
-                <SelectTrigger aria-label="Corners"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper">{Object.entries(roundingLevels).map(([id, level]) => <SelectItem key={id} value={id}>{level.name}</SelectItem>)}</SelectContent>
               </Select>
             </Label>
             <Label className="field">Layout density
@@ -126,10 +112,9 @@ export function Settings({
             </Label>
           </div>
           <div className="theme-presets" role="group" aria-label="Color presets">
-            <span className="preset-label">Color palette</span>
-            {Object.entries(colorPresets).map(([name, preset]) => <Button key={name} variant="outline" size="sm" type="button"
-              aria-pressed={draft.colorPreset === name}
-              onClick={() => setDraft({ ...draft, colorPreset: name as Preferences["colorPreset"], themeColors: { dark: {}, light: {} } })}>
+            {Object.entries(themePresets).map(([name, preset]) => <Button key={name} variant="outline" size="sm" type="button"
+              aria-pressed={Object.entries(preset[mode]).every(([key, value]) => (colors[key as keyof typeof colors] ?? themePresets.Graphite[mode][key as keyof typeof colors]) === value)}
+              onClick={() => setDraft({ ...draft, themeColors: preset })}>
               <span className="color-swatch" style={{ background: preset[mode].primary }} />{name}
             </Button>)}
             <Button type="button" variant="ghost" size="sm" onClick={() => setDraft({ ...draft, themeColors: { dark: {}, light: {} } })}>Reset colors</Button>
@@ -138,17 +123,16 @@ export function Settings({
             {([['background', 'Background'], ['card', 'Surfaces'], ['foreground', 'Text'], ['mutedForeground', 'Muted text'], ['border', 'Borders'], ['primary', 'Accent']] as const).map(([key, label]) =>
               <Label className="field" key={key}>{label}
                 <div className="color-input">
-                  <span className="color-swatch" style={{ background: colors[key] || colorPresets[draft.colorPreset][mode][key] }} />
-                  <Input aria-label={`${label} color`} value={colors[key] ?? ''} placeholder={colorPresets[draft.colorPreset][mode][key]} maxLength={7} spellCheck={false}
+                  <span className="color-swatch" style={{ background: colors[key] || themePresets.Graphite[mode][key] }} />
+                  <Input aria-label={`${label} color`} value={colors[key] ?? ''} placeholder={themePresets.Graphite[mode][key]} maxLength={7} spellCheck={false}
                     onChange={event => setDraft({ ...draft, themeColors: { ...draft.themeColors, [mode]: { ...colors, [key]: event.target.value || undefined } } })} />
                 </div>
               </Label>)}
           </div>
-          <div className="theme-preview" style={themeStyle({ ...draft, theme: mode })}>
-            <div><strong>{interfacePresets[draft.uiPreset].name} · {draft.colorPreset}</strong><Badge>Work</Badge></div>
+          <div className="theme-preview" style={themeStyle(mode, colors)}>
+            <div><strong>Theme preview</strong><Badge>Work</Badge></div>
             <p>Your notes and tasks, in your colors.</p>
-            <div className="theme-preview-controls"><Input aria-label="Appearance preview field" placeholder="A thought worth keeping" readOnly /><Button type="submit" size="sm">Apply preferences</Button></div>
-            <small>{roundingLevels[draft.rounding].name} corners · {mode} mode. Save preferences to apply across your windows.</small>
+            <small>Editing {mode} colors. Light and dark palettes are saved separately.</small>
           </div>
         </section>
         <section>
