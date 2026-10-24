@@ -8,7 +8,7 @@ import {
   existsSync,
 } from "node:fs";
 import { join } from "node:path";
-import { settingsSchema, type Snapshot } from "@dock/contracts";
+import { settingsSchema, updateStateSchema, type Snapshot } from "@dock/contracts";
 import { startLocalApi } from "./local-api.ts";
 
 test("local commands require the profile token and reject browser origins and malformed writes", async () => {
@@ -23,6 +23,7 @@ test("local commands require the profile token and reject browser origins and ma
     items: [],
     settings: settingsSchema.parse({}),
     sync: { connected: false, endpoint: "", email: "", phase: "disconnected", pending: 0, conflicts: 0, lastSyncedAt: null, error: "" },
+    update: updateStateSchema.parse({ status: "unavailable" }),
     system: {
       platform: process.platform,
       version: "0.1.0",
@@ -76,6 +77,8 @@ test("local commands require the profile token and reject browser origins and ma
       400,
     );
     assert.equal((await send({ type: "capture.resize", height: 224 }, auth)).status, 400);
+    for (const action of ["check", "download", "install"])
+      assert.equal((await send({ type: "update", action }, auth)).status, 400);
     assert.equal((await send({
       type: "sync.login", endpoint: "https://sync.example.com",
       email: "owner@example.com", password: "not-a-real-password",

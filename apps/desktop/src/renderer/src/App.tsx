@@ -38,6 +38,7 @@ import { Notes } from "./Notes";
 import { Schedule } from "./Schedule";
 import { Settings } from "./Settings";
 import { TaskEditor } from "./TaskEditor";
+import { UpdateNotice } from "./Updates";
 import { useDock, type Act } from "./state";
 
 type View =
@@ -63,26 +64,27 @@ function Chrome({
   act: Act;
   onSearch: () => void;
 }) {
-  const capturePinned = snapshot.settings.capturePinned && snapshot.system.topmostSupported;
+  const pinned = (role === "mini" ? snapshot.settings.miniPinned : snapshot.settings.capturePinned) && snapshot.system.topmostSupported;
+  const pinTarget = role === "mini" ? "sticky window" : "quick capture";
   return (
     <header className="chrome">
       <div className="chrome-brand">
-        {role === "capture" ? <Zap size={16} /> : <ListFilter size={19} />}
-        <strong>{role === "capture" ? "Quick capture" : "Dock"}</strong>
-        {role === "mini" && <span>Mini window</span>}
+        {role === "capture" ? <Zap size="1rem" /> : <ListFilter size="1.1875rem" />}
+        <strong>{role === "capture" ? "Quick capture" : role === "mini" ? "Sticky window" : "Dock"}</strong>
         {role === "capture" && <Shortcut value={snapshot.settings.shortcut} />}
       </div>
       <div className="chrome-tools">
+        {role === "main" && <UpdateNotice update={snapshot.update} version={snapshot.system.version} act={act} />}
         {role === "main" && <Button variant="secondary" size="sm" className="chrome-capture"
           onClick={() => act({ type: "window", action: "capture" })}>
-          <Zap size={15} /><span>Quick capture</span><Shortcut value={snapshot.settings.shortcut} />
+          <Zap size="0.9375rem" /><span>Quick capture</span><Shortcut value={snapshot.settings.shortcut} />
         </Button>}
         {role === "main" && (
           <ActionButton
             aria-label="Search tasks and notes"
             onClick={onSearch}
           >
-            <Search size={17} />
+            <Search size="1.0625rem" />
           </ActionButton>
         )}
         {role !== "capture" && <ActionButton
@@ -98,9 +100,9 @@ function Chrome({
           }
         >
           {snapshot.settings.theme === "dark" ? (
-            <Sun size={17} />
+            <Sun size="1.0625rem" />
           ) : (
-            <Moon size={17} />
+            <Moon size="1.0625rem" />
           )}
         </ActionButton>}
         {role === "main" && (
@@ -109,42 +111,44 @@ function Chrome({
               aria-label="Open mini window"
               onClick={() => act({ type: "window", action: "mini" })}
             >
-              <Pin size={17} />
+              <Pin size="1.0625rem" />
             </ActionButton>
 
           </>
         )}
-        {role === "capture" && <>
+        {(role === "capture" || role === "mini") &&
           <ActionButton
-            className={capturePinned ? "active" : ""}
-            aria-label={!snapshot.system.topmostSupported ? "Pinning is unavailable on this desktop" : capturePinned ? "Unpin quick capture" : "Pin quick capture"}
-            aria-pressed={capturePinned}
+            className={pinned ? "active" : ""}
+            aria-label={!snapshot.system.topmostSupported ? "Pinning is unavailable on this desktop" : `${pinned ? "Unpin" : "Pin"} ${pinTarget}`}
+            aria-pressed={pinned}
             disabled={!snapshot.system.topmostSupported}
             onClick={() => act({
               type: "settings.save",
-              settings: { ...snapshot.settings, capturePinned: !snapshot.settings.capturePinned },
+              settings: { ...snapshot.settings, [role === "mini" ? "miniPinned" : "capturePinned"]: !pinned },
             })}
           >
-            {capturePinned ? <Pin size={17} /> : <PinOff size={17} />}
+            {pinned ? <Pin size="1.0625rem" /> : <PinOff size="1.0625rem" />}
           </ActionButton>
+        }
+        {role === "capture" &&
           <ActionButton aria-label="Dismiss quick capture" onClick={() => act({ type: "window", action: "hide" })}>
-            <X size={16} />
+            <X size="1rem" />
           </ActionButton>
-        </>}
+        }
         {snapshot.system.platform !== "darwin" && role !== "capture" && (
           <div className="window-controls">
             <ActionButton
               aria-label="Minimize window"
               onClick={() => act({ type: "window", action: "minimize" })}
             >
-              <Minus size={15} />
+              <Minus size="0.9375rem" />
             </ActionButton>
             {role === "main" && (
               <ActionButton
                 aria-label="Maximize window"
                 onClick={() => act({ type: "window", action: "maximize" })}
               >
-                <Maximize2 size={13} />
+                <Maximize2 size="0.8125rem" />
               </ActionButton>
             )}
             <Button variant="ghost"
@@ -152,7 +156,7 @@ function Chrome({
               aria-label="Close window"
               onClick={() => act({ type: "window", action: "close" })}
             >
-              <X size={16} />
+              <X size="1rem" />
             </Button>
           </div>
         )}
@@ -177,6 +181,10 @@ export function App() {
   const [clock, setClock] = useState(Date.now());
   const search = useRef<HTMLInputElement>(null);
   const main = useRef<HTMLElement>(null);
+  useEffect(() => window.dock.onBeforeUpdate(async () => {
+    if (editing !== undefined || captureTitle.trim())
+      throw new Error("Finish or close your task draft before restarting Dock.");
+  }), [editing, captureTitle]);
   useEffect(() => () => {
     completionTimers.current.forEach(timer => window.clearTimeout(timer));
   }, []);
@@ -257,7 +265,7 @@ export function App() {
       } else {
         setCompletions(current => ({ ...current, [item.id]: { item, phase: "complete" } }));
         setFeedback({ type: "completed", item });
-        completionTimers.current.set(item.id, window.setTimeout(() => clearCompletion(item.id), 480));
+        completionTimers.current.set(item.id, window.setTimeout(() => clearCompletion(item.id), 900));
       }
     } catch {
       clearCompletion(item.id);
@@ -283,7 +291,7 @@ export function App() {
   if (!snapshot)
     return (
       <div className="startup">
-        <ListFilter size={28} />
+        <ListFilter size="1.75rem" />
         <h1>Dock</h1>
         <p role="status">{error || "Opening your local workspace…"}</p>
         {error && (
@@ -368,6 +376,7 @@ export function App() {
   return (
     <div
       className={`app-shell ${role} ${snapshot.system.platform === "darwin" ? "mac" : ""}`}
+      inert={snapshot.update.status === "installing"}
     >
       <Chrome
         snapshot={snapshot}
@@ -384,7 +393,7 @@ export function App() {
             aria-label="Dismiss error"
             onClick={clearError}
           >
-            <X size={15} />
+            <X size="0.9375rem" />
           </ActionButton>
         </div>
       )}
@@ -397,17 +406,21 @@ export function App() {
               <div>
                 <h1>Keep it in view</h1>
                 <p>
+                  {snapshot.system.platform === "darwin" && "All desktops · "}
                   {snapshot.system.topmostSupported
-                    ? "Pinned above your other windows"
+                    ? snapshot.settings.miniPinned ? "Always on top" : "Unpinned"
                     : "Always-on-top unavailable on Wayland"}
                 </p>
               </div>
+              <div className="heading-tools">
+              <UpdateNotice update={snapshot.update} version={snapshot.system.version} act={act} />
               <ActionButton
                 aria-label="Open main app"
                 onClick={() => act({ type: "window", action: "main" })}
               >
-                <Maximize2 size={16} />
+                <Maximize2 size="1rem" />
               </ActionButton>
+              </div>
             </div>
             {tasks.filter((item) => !item.done).slice(0, 6).length ? (
               rows(tasks.filter((item) => !item.done).slice(0, 6))
@@ -421,7 +434,7 @@ export function App() {
             className="inline-add mini-add"
             onClick={() => act({ type: "window", action: "capture" })}
           >
-            <Plus size={17} /> Quick capture
+            <Plus size="1.0625rem" /> Quick capture
           </Button>
         </>
       ) : (
@@ -437,10 +450,10 @@ export function App() {
                   (id === "today" ? item.scheduledAt && localDate(new Date(item.scheduledAt)) <= today :
                    id === "inbox" ? item.space === "Inbox" : id === "starred" ? item.priority : true)).length;
                 return (
-                  <ActionButton aria-label={title} size="default" key={id} className={`nav-button ${view === id && (view !== "all" || space === "all") ? "active" : ""}`}
+                  <ActionButton aria-label={title} size="nav" key={id} className={`nav-button ${view === id && (view !== "all" || space === "all") ? "active" : ""}`}
                     aria-current={view === id && (view !== "all" || space === "all") ? "page" : undefined}
                     onClick={() => { setView(id); setSpace("all"); }}>
-                    <Icon size={16} /><span className="nav-label">{title}</span>
+                    <Icon size="1rem" /><span className="nav-label">{title}</span>
                     {!["notes", "schedule"].includes(id) && count > 0 && <Badge variant="secondary" className="nav-count">{count}</Badge>}
                   </ActionButton>
                 );
@@ -450,23 +463,23 @@ export function App() {
             <div className="sidebar-label">Spaces</div>
             <nav className="space-navigation" aria-label="Spaces">
               {(["Work", "Personal"] as const).map(name => (
-                <ActionButton aria-label={name} size="default" key={name} className={`nav-button ${view === "all" && space === name ? "active" : ""}`}
+                <ActionButton aria-label={name} size="nav" key={name} className={`nav-button ${view === "all" && space === name ? "active" : ""}`}
                   aria-current={view === "all" && space === name ? "page" : undefined}
                   onClick={() => { setSpace(name); setView("all"); }}>
-                  <Circle size={10} /><span className="space-initial" aria-hidden="true">{name[0]}</span><span className="nav-label">{name}</span>
+                  <Circle size="0.625rem" /><span className="space-initial" aria-hidden="true">{name[0]}</span><span className="nav-label">{name}</span>
                   <small>{snapshot.items.filter(item => item.kind === "task" && !item.done && item.space === name).length || ""}</small>
                 </ActionButton>
               ))}
             </nav>
             </div>
             <div className="sidebar-bottom">
-              <ActionButton aria-label="Quick capture" size="default" className="nav-button" onClick={() => act({ type: "window", action: "capture" })}>
-                <Zap size={16} /><span className="nav-label">Quick capture</span>
+              <ActionButton aria-label="Quick capture" size="nav" className="nav-button" onClick={() => act({ type: "window", action: "capture" })}>
+                <Zap size="1rem" /><span className="nav-label">Quick capture</span>
               </ActionButton>
-              <ActionButton aria-label="Preferences" size="default" className={`nav-button ${view === "settings" ? "active" : ""}`}
+              <ActionButton aria-label="Preferences" size="nav" className={`nav-button ${view === "settings" ? "active" : ""}`}
                 aria-current={view === "settings" ? "page" : undefined}
                 onClick={() => setView("settings")}>
-                <Settings2 size={16} /><span className="nav-label">Preferences</span>
+                <Settings2 size="1rem" /><span className="nav-label">Preferences</span>
               </ActionButton>
             </div>
           </aside>
@@ -510,14 +523,14 @@ export function App() {
                     aria-label="New task"
                     onClick={() => setEditing(null)}
                   >
-                    <Plus size={16} /> New task
+                    <Plus size="1rem" /> New task
                   </Button>
                 </div>
               )}
             </div>}
             {searchOpen && view !== "settings" && (
               <div className="search">
-                <Search size={17} />
+                <Search size="1.0625rem" />
                 <Input
                   ref={search}
                   aria-label="Search"
@@ -532,7 +545,7 @@ export function App() {
                     setSearchOpen(false);
                   }}
                 >
-                  <X size={15} />
+                  <X size="0.9375rem" />
                 </ActionButton>
               </div>
             )}
@@ -554,10 +567,10 @@ export function App() {
                 <>
                   {view !== "done" && !query && (
                     <form className="quick-add" onSubmit={event => void captureTask(event)}>
-                      <Plus size={16} />
-                      <Input aria-label="Quick add task" placeholder={view === "today" ? "Add a task for today…" : "Add a task…"}
+                      <Plus size="1rem" />
+                      <Input size="xs" aria-label="Quick add task" placeholder={view === "today" ? "Add a task for today…" : "Add a task…"}
                         value={captureTitle} onChange={event => setCaptureTitle(event.target.value)} required maxLength={500} disabled={capturing} />
-                      <Button variant="outline" type="submit"  disabled={capturing || !captureTitle.trim()}>{capturing ? "Saving…" : "Add"}</Button>
+                      <Button size="xs" variant="outline" type="submit" disabled={capturing || !captureTitle.trim()}>{capturing ? "Saving…" : "Add"}</Button>
                     </form>
                   )}
                   {!!overdue.length && (
@@ -632,7 +645,7 @@ export function App() {
         <div key={`${feedback.type}-${feedback.item.id}`}
           className={`undo-toast ${feedback.type === "completed" ? "completion-toast" : ""}`} role="status">
           {feedback.type === "completed" ? <>
-            <Check className="completion-check" size={18} aria-hidden="true" />
+            <Check className="completion-check" size="1.125rem" aria-hidden="true" />
             <span className="completion-message"><strong>Task completed</strong><span>{feedback.item.title}</span></span>
           </> : <span>{feedback.item.kind === "task" ? "Task" : "Note"} deleted</span>}
           <Button variant="ghost"
@@ -645,7 +658,7 @@ export function App() {
             aria-label="Dismiss undo"
             onClick={() => setFeedback(null)}
           >
-            <X size={14} />
+            <X size="0.875rem" />
           </ActionButton>
         </div>
       )}

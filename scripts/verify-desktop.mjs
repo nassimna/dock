@@ -122,7 +122,7 @@ try {
     {
       node: "undefined",
       process: "undefined",
-      bridge: ["dispatch", "onCapture", "onChanged"],
+      bridge: ["dispatch", "onBeforeUpdate", "onCapture", "onChanged", "prepareUpdate"],
     },
   );
   await expect(main.getByText("A clear start to your day")).toBeVisible();

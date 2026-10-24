@@ -12,6 +12,8 @@ const child = spawn(
     "--test",
     "apps/desktop/src/main/database.test.ts",
     "apps/desktop/src/main/appearance.test.ts",
+    "apps/desktop/src/main/updates.test.ts",
+    "apps/desktop/src/main/mac-update-installer.test.ts",
     "apps/desktop/src/renderer/src/lib/theme.test.ts",
     "apps/desktop/src/main/note-properties.test.ts",
     "apps/desktop/src/main/reminders.test.ts",

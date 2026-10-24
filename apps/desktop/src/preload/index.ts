@@ -5,7 +5,15 @@ import {
   type DesktopBridge,
 } from "@dock/contracts";
 
+const beforeUpdate = new Set<() => Promise<void>>();
 const bridge: DesktopBridge = {
+  onBeforeUpdate(listener) {
+    beforeUpdate.add(listener);
+    return () => { beforeUpdate.delete(listener); };
+  },
+  async prepareUpdate() {
+    await Promise.all([...beforeUpdate].map(listener => listener()));
+  },
   async dispatch(command) {
     return snapshotSchema.parse(
       await ipcRenderer.invoke("dock:command", parseCommand(command)),

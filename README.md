@@ -76,9 +76,17 @@ This follows inspected patterns from [Ternline](https://github.com/nassimna/tern
 
 Cross-device sync now has a Workers + D1 backend and an offline queue. Connect an email/password account in Preferences after deploying the backend; see [sync setup](apps/sync/README.md). Sync is not deployed by default. Remote push notifications are not implemented. Native always-on-top is unavailable under Wayland, and global shortcuts depend on the compositor's portal support.
 
+## App updates
+
+Installed builds check Dock’s GitHub releases at startup and every six hours when **Check and download updates automatically** is enabled in Preferences. A small update icon appears in the main window and sticky window after a newer version is found. Downloads show progress and retry actions; **Restart to update** waits for note saves and protects unfinished drafts.
+
+`pnpm package:mac` produces a DMG, ZIP and `latest-mac.yml`. Publish the installers and metadata from the same versioned build together in a GitHub release. Packaging uses `--publish never`; it does not publish a release. Windows NSIS and Linux AppImage builds use electron-updater’s native installers.
+
+Developer ID signed Mac installations keep the native updater. Local ad-hoc Mac builds use a separate installer that verifies the ZIP checksum, bundle ID, version and code integrity before replacing Dock after shutdown. It preserves the data directory and restores the previous bundle if replacement or launch submission fails. This distribution trusts the configured release origin; production signing and notarization require a Developer ID setup. See [electron-builder’s update documentation](https://www.electron.build/v26/docs/features/auto-update/) (checked 23 October 2026).
+
 ## UI development
 
-The renderer uses checked-in shadcn/ui controls under `apps/desktop/src/renderer/src/components/ui`, configured by `apps/desktop/components.json`. Compose those controls for new screens. Color and radius tokens live in `styles.css`; Tailwind utilities and screen layouts use the same tokens in every window. `ActionButton` adds a tooltip and accessible label to icon actions.
+The renderer uses checked-in shadcn/ui controls under `apps/desktop/src/renderer/src/components/ui`, configured by `apps/desktop/components.json`. Compose those controls for new screens. Buttons, inputs and selects share rem-based size variants in `components/ui/control-sizes.ts`; choose the same `size` for controls in a row instead of overriding their heights or text sizes in screen CSS. Use rem for interface spacing and icons so the layout follows root font scaling. Color and radius tokens live in `styles.css`; Tailwind utilities and screen layouts use the same tokens in every window. `ActionButton` adds a tooltip and accessible label to icon actions.
 
 Notes use Tiptap with Markdown for ordinary documents and HTML for rich blocks and formatting. Supported editing is exercised in Electron; the upstream Markdown extension is currently labeled beta. Attachments, Notion databases, page hierarchy, and live collaborative editing are outside this version. References checked 9 October 2026: [shadcn/ui theming](https://ui.shadcn.com/docs/theming) and [Tiptap Markdown](https://tiptap.dev/docs/editor/markdown/getting-started/installation).
 

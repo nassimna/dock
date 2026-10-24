@@ -6,10 +6,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TimePicker } from "@/components/ui/time-picker";
 import { Badge } from "@/components/ui/badge";
 import { colorPresets, interfacePresets, roundingLevels, themeStyle } from "@/lib/theme";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, Download, Keyboard, Palette, Terminal } from "lucide-react";
 import { settingsSchema, type Settings as Preferences, type Snapshot } from "@dock/contracts";
 import { SyncSettings } from "./SyncSettings";
+import { UpdateDetails } from "./Updates";
 import { Shortcut } from "./components";
 import type { Act, Dispatch } from "./state";
 
@@ -27,18 +28,23 @@ export function Settings({
   const [status, setStatus] = useState("");
   const mode = snapshot.settings.theme;
   const colors = draft.themeColors[mode];
+  const preferences = { ...draft, theme: mode, capturePinned: snapshot.settings.capturePinned, miniPinned: snapshot.settings.miniPinned };
+  useEffect(() => window.dock.onBeforeUpdate(async () => {
+    if (JSON.stringify(preferences) !== JSON.stringify(snapshot.settings))
+      throw new Error("Save your preferences before restarting Dock.");
+  }));
   async function save(event: React.FormEvent) {
     event.preventDefault();
-    const preferences = settingsSchema.safeParse({ ...draft, theme: mode, capturePinned: snapshot.settings.capturePinned });
-    if (!preferences.success) {
-      setStatus(preferences.error.issues[0]!.message);
+    const parsed = settingsSchema.safeParse(preferences);
+    if (!parsed.success) {
+      setStatus(parsed.error.issues[0]!.message);
       return;
     }
     setStatus("Saving…");
     try {
       const result = await dispatch({
         type: "settings.save",
-        settings: preferences.data,
+        settings: parsed.data,
       });
       setDraft(result.settings);
       setStatus("Preferences saved.");
@@ -83,7 +89,7 @@ export function Settings({
           <Button variant="default">Save preferences</Button>
         </div>
         <section>
-          <h2><Palette size={17} /> Appearance</h2>
+          <h2><Palette size="1.0625rem" /> Appearance</h2>
           <p>Choose a layout, then make it yours with a palette and corner style. Preferences stay on this device.</p>
           <div className="interface-presets" role="group" aria-label="Interface presets">
             {Object.entries(interfacePresets).map(([id, preset]) => <Button key={id} variant="outline" type="button"
@@ -147,13 +153,13 @@ export function Settings({
           <div className="theme-preview" style={themeStyle({ ...draft, theme: mode })}>
             <div><strong>{interfacePresets[draft.uiPreset].name} · {draft.colorPreset}</strong><Badge>Work</Badge></div>
             <p>Your notes and tasks, in your colors.</p>
-            <div className="theme-preview-controls"><Input aria-label="Appearance preview field" placeholder="A thought worth keeping" readOnly /><Button type="submit" size="sm">Apply preferences</Button></div>
+            <div className="theme-preview-controls"><Input size="sm" aria-label="Appearance preview field" placeholder="A thought worth keeping" readOnly /><Button type="submit" size="sm">Apply preferences</Button></div>
             <small>{roundingLevels[draft.rounding].name} corners · {mode} mode. Save preferences to apply across your windows.</small>
           </div>
         </section>
         <section>
           <h2>
-            <Keyboard size={17} /> Quick capture
+            <Keyboard size="1.0625rem" /> Quick capture
           </h2>
           <p>Open a small capture window over the app you’re using.</p>
           <div className="shortcut-setting">
@@ -186,7 +192,7 @@ export function Settings({
         </section>
         <section>
           <h2>
-            <Bell size={17} /> Reminders
+            <Bell size="1.0625rem" /> Reminders
           </h2>
           <p>Notifications run while Dock is open or in the tray.</p>
           <Label className="checkbox-label">
@@ -243,24 +249,47 @@ export function Settings({
                 setDraft({ ...draft, launchAtLogin: checked === true })
               }
             />{" "}
-            Launch at login
+            Start Dock at login
           </Label>
           {!snapshot.system.launchAtLoginSupported && (
             <small className="muted">
               Launch at login is available in packaged macOS and Windows builds.
             </small>
           )}
+          <Label className="checkbox-label">
+            <Checkbox
+              checked={draft.openMiniAtStartup}
+              onCheckedChange={(checked) =>
+                setDraft({ ...draft, openMiniAtStartup: checked === true })
+              }
+            />{" "}
+            Open sticky window when Dock starts
+          </Label>
+          <small className="muted">
+            Applies next time Dock starts. Use the sticky window’s pin to keep it above other apps.
+            {snapshot.system.platform === "darwin" && " It stays on every desktop, pinned or unpinned."}
+          </small>
           {!snapshot.system.topmostSupported && (
             <p className="overdue">
               Wayland does not support the native always-on-top mini window.
             </p>
           )}
         </section>
+        <section>
+          <h2><Download size="1.0625rem" /> Updates</h2>
+          <Label className="checkbox-label">
+            <Checkbox checked={draft.automaticUpdates} disabled={snapshot.update.status === "unavailable"}
+              onCheckedChange={checked => setDraft({ ...draft, automaticUpdates: checked === true })} />
+            Check and download updates automatically
+          </Label>
+          <p>Dock only restarts when you choose to install an update.</p>
+          <UpdateDetails update={snapshot.update} version={snapshot.system.version} act={act} />
+        </section>
       </form>
       <SyncSettings sync={snapshot.sync} dispatch={dispatch} />
       <section>
         <h2>
-          <Download size={17} /> Your data
+          <Download size="1.0625rem" /> Your data
         </h2>
         <p>
           Tasks, notes, and preferences are saved on this computer, even offline.
@@ -283,7 +312,7 @@ export function Settings({
       </section>
       <section>
         <h2>
-          <Terminal size={17} /> Agent access
+          <Terminal size="1.0625rem" /> Agent access
         </h2>
         <p>The local CLI reads and writes through the running app.</p>
         <pre>

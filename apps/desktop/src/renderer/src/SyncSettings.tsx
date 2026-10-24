@@ -38,7 +38,7 @@ export function SyncSettings({ sync, dispatch }: { sync: SyncStatus; dispatch: D
   }
   return (
     <section>
-      <h2><Cloud size={17} /> Sync across devices</h2>
+      <h2><Cloud size="1.0625rem" /> Sync across devices</h2>
       <p>
         Sign in on each device to sync tasks and notes. Everything saves locally
         first, even offline. Window preferences stay on this device.
