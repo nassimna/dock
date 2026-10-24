@@ -31,9 +31,9 @@ function CalloutView({ node, updateAttributes, editor }: ReactNodeViewProps) {
   const editable = useEditorState({ editor, selector: ({ editor }) => editor.isEditable });
   return <NodeViewWrapper className="note-callout" data-type="callout" style={{ color: node.attrs.textColor, backgroundColor: node.attrs.backgroundColor }}>
     <div contentEditable={false}><Popover>
-      <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Change callout icon" disabled={!editable}>{node.attrs.emoji}</Button></PopoverTrigger>
+      <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="Change callout icon" disabled={!editable}>{node.attrs.emoji}</Button></PopoverTrigger>
       <PopoverContent className="callout-icons"><Input aria-label="Callout icon" value={node.attrs.emoji} maxLength={16} onChange={event => { if (editor.isEditable) updateAttributes({ emoji: event.target.value }); }} />
-        <div>{["💡", "📌", "✅", "⚠️", "📝", "💬"].map(emoji => <Button key={emoji} variant="ghost" size="icon" onClick={() => { if (editor.isEditable) updateAttributes({ emoji }); }}>{emoji}</Button>)}</div>
+        <div>{["💡", "📌", "✅", "⚠️", "📝", "💬"].map(emoji => <Button key={emoji} variant="ghost" size="icon-xs" onClick={() => { if (editor.isEditable) updateAttributes({ emoji }); }}>{emoji}</Button>)}</div>
       </PopoverContent>
     </Popover></div><NodeViewContent />
   </NodeViewWrapper>;
@@ -54,8 +54,8 @@ function ToggleView({ node, updateAttributes, editor }: ReactNodeViewProps) {
   const open = editable ? Boolean(node.attrs.open) : readOpen;
   return <NodeViewWrapper data-type="details" data-open={open ? "true" : "false"}
     style={{ color: node.attrs.textColor, backgroundColor: node.attrs.backgroundColor }}>
-    <Button variant="ghost" size="icon" contentEditable={false} aria-label={open ? "Collapse toggle" : "Expand toggle"}
-      aria-expanded={open} onClick={() => { if (editor.isEditable) updateAttributes({ open: !open }); else setReadOpen(!open); }}><ChevronRight size={15} /></Button>
+    <Button variant="ghost" size="icon-xs" contentEditable={false} aria-label={open ? "Collapse toggle" : "Expand toggle"}
+      aria-expanded={open} onClick={() => { if (editor.isEditable) updateAttributes({ open: !open }); else setReadOpen(!open); }}><ChevronRight size="0.9375rem" /></Button>
     <NodeViewContent />
   </NodeViewWrapper>;
 }
@@ -90,8 +90,8 @@ function ContentsView({ editor }: ReactNodeViewProps) {
   const headings = useEditorState({ editor, selector: ({ editor }) => noteHeadings(editor) });
   return <NodeViewWrapper className="note-contents" contentEditable={false} data-type="tableOfContents">
     <span className="group-label">Table of contents</span>
-    {headings.length ? headings.map(heading => <Button variant="ghost" key={heading.pos} onClick={() => jumpToHeading(editor, heading.pos)}
-      style={{ paddingLeft: `${(heading.level - 1) * 12 + 4}px` }}>{heading.title}</Button>) : <p className="muted">Add headings to build your contents.</p>}
+    {headings.length ? headings.map(heading => <Button variant="ghost" size="xs" key={heading.pos} onClick={() => jumpToHeading(editor, heading.pos)}
+      style={{ paddingLeft: `${(heading.level - 1) * 0.75 + 0.25}rem` }}>{heading.title}</Button>) : <p className="muted">Add headings to build your contents.</p>}
   </NodeViewWrapper>;
 }
 export const TableOfContents = Node.create({

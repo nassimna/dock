@@ -29,6 +29,9 @@ test("tasks, notes, preferences, and linked content survive reopening the SQLite
     assert.equal(database.snapshot().settings.density, "compact");
     assert.equal(database.snapshot().settings.noteFont, "system");
     assert.equal(database.snapshot().settings.capturePinned, true);
+    assert.equal(database.snapshot().settings.miniPinned, true);
+    assert.equal(database.snapshot().settings.openMiniAtStartup, false);
+    assert.equal(database.snapshot().settings.automaticUpdates, true);
     assert.deepEqual(database.snapshot().settings.themeColors, { dark: {}, light: {} });
     assert.throws(() => commandSchema.parse({
       type: "settings.save",
@@ -62,6 +65,9 @@ test("tasks, notes, preferences, and linked content survive reopening the SQLite
         noteSize: 18,
         shortcut: "Control+Alt+J",
         capturePinned: false,
+        miniPinned: false,
+        openMiniAtStartup: true,
+        automaticUpdates: false,
       },
     });
     database.close();
@@ -86,6 +92,9 @@ test("tasks, notes, preferences, and linked content survive reopening the SQLite
     assert.equal(restored.settings.noteSize, 18);
     assert.equal(restored.settings.shortcut, "Control+Alt+J");
     assert.equal(restored.settings.capturePinned, false);
+    assert.equal(restored.settings.miniPinned, false);
+    assert.equal(restored.settings.openMiniAtStartup, true);
+    assert.equal(restored.settings.automaticUpdates, false);
   } finally {
     database.close();
     rmSync(directory, { recursive: true });

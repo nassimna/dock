@@ -24,6 +24,9 @@ export function Capture({
   const [showOptions, setShowOptions] = useState(false);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => window.dock.onBeforeUpdate(async () => {
+    if (text.trim()) throw new Error("Save or clear your quick capture draft before restarting Dock.");
+  }), [text]);
   useEffect(() => window.dock.onCapture(() => input.current?.focus()), []);
   useEffect(() => {
     input.current?.focus();
@@ -77,7 +80,7 @@ export function Capture({
       }}
     >
       <div className="capture-modes">
-        <Button variant="ghost"
+        <Button size="xs" variant="ghost"
           type="button"
           aria-pressed={kind === "task"}
           onClick={() => {
@@ -85,9 +88,9 @@ export function Capture({
             input.current?.focus();
           }}
         >
-          <ListTodo size={15} /> Task
+          <ListTodo size="0.9375rem" /> Task
         </Button>
-        <Button variant="ghost"
+        <Button size="xs" variant="ghost"
           type="button"
           aria-pressed={kind === "note"}
           onClick={() => {
@@ -95,7 +98,7 @@ export function Capture({
             input.current?.focus();
           }}
         >
-          <FileText size={15} /> Note
+          <FileText size="0.9375rem" /> Note
         </Button>
       </div>
       <Textarea
@@ -121,26 +124,26 @@ export function Capture({
           <div className="capture-options">
             {kind === "task" && (
               <>
-                <Button variant="ghost"
+                <Button size="xs" variant="ghost"
                   type="button"
                   className={priority ? "active" : ""}
                   aria-pressed={priority}
                   onClick={() => setPriority(!priority)}
                 >
-                  <Star size={15} /> Important
+                  <Star size="0.9375rem" /> Important
                 </Button>
-                <Button variant="ghost"
+                <Button size="xs" variant="ghost"
                   type="button"
                   className={showSchedule ? "active" : ""}
                   aria-expanded={showSchedule}
                   onClick={() => setShowSchedule(!showSchedule)}
                 >
-                  <CalendarDays size={15} /> Schedule
+                  <CalendarDays size="0.9375rem" /> Schedule
                 </Button>
               </>
             )}
             <Select value={space} onValueChange={value => setSpace(value as Item["space"])}>
-              <SelectTrigger aria-label="Capture space" size="sm"><SelectValue /></SelectTrigger>
+              <SelectTrigger aria-label="Capture space" size="xs"><SelectValue /></SelectTrigger>
               <SelectContent position="popper">
                 <SelectItem value="Inbox">Inbox</SelectItem>
                 <SelectItem value="Work">Work</SelectItem>
@@ -154,17 +157,17 @@ export function Capture({
               <DateTimePicker label="Capture schedule" value={scheduled} onChange={setScheduled} />
             </Label>
           )}
-          <Button variant="ghost" size="sm" type="button" className="capture-main"
+          <Button size="xs" variant="ghost" type="button" className="capture-main"
             onClick={() => act({ type: "window", action: "main" })}>Open Dock</Button>
         </div>
       )}
       <div className="capture-footer">
-        <Button variant="ghost" size="sm" type="button" className={showOptions || priority || scheduled || space !== "Inbox" ? "active" : ""}
+        <Button size="sm" variant="ghost" type="button" className={showOptions || priority || scheduled || space !== "Inbox" ? "active" : ""}
           aria-expanded={showOptions} aria-controls="capture-details" onClick={() => setShowOptions(!showOptions)}>
-          <SlidersHorizontal size={14} /> Options{space !== "Inbox" && <span>· {space}</span>}
+          <SlidersHorizontal size="0.875rem" /> Options{space !== "Inbox" && <span>· {space}</span>}
         </Button>
-        <Button variant="default" disabled={!text.trim() || busy}>
-          <Plus size={15} /> {busy ? "Saving…" : "Capture"}
+        <Button size="sm" variant="default" disabled={!text.trim() || busy}>
+          <Plus size="0.9375rem" /> {busy ? "Saving…" : "Capture"}
         </Button>
       </div>
     </form>

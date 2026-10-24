@@ -23,7 +23,7 @@ export function DateTimePicker({ value, onChange, label }: {
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger asChild>
       <Button type="button" variant="outline" className="date-time-trigger" aria-label={label}>
-        <CalendarDays size={15} />
+        <CalendarDays size="0.9375rem" />
         {date ? `${date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })} · ${time}` : "Choose date and time"}
       </Button>
     </PopoverTrigger>

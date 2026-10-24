@@ -4,17 +4,17 @@ import type { Settings } from "@dock/contracts";
 type Colors = Settings["themeColors"]["dark"];
 
 export const interfacePresets = {
-  ink: { name: "Ink", description: "Icon rail and a quiet writing page", sidebar: "54px", row: "30px", control: "26px" },
-  precision: { name: "Precision", description: "Compact navigation and dense lists", sidebar: "144px", row: "30px", control: "26px" },
-  native: { name: "Native", description: "Full labels and grouped properties", sidebar: "164px", row: "34px", control: "28px" },
-  studio: { name: "Studio", description: "Workspace panels and a properties sidebar", sidebar: "144px", row: "34px", control: "28px" },
-} satisfies Record<Settings["uiPreset"], { name: string; description: string; sidebar: string; row: string; control: string }>;
+  ink: { name: "Ink", description: "Icon rail and a quiet writing page", sidebar: "3.375rem", row: "1.875rem" },
+  precision: { name: "Precision", description: "Compact navigation and dense lists", sidebar: "9rem", row: "1.875rem" },
+  native: { name: "Native", description: "Full labels and grouped properties", sidebar: "10.25rem", row: "2.125rem" },
+  studio: { name: "Studio", description: "Workspace panels and a properties sidebar", sidebar: "9rem", row: "2.125rem" },
+} satisfies Record<Settings["uiPreset"], { name: string; description: string; sidebar: string; row: string }>;
 
 export const roundingLevels = {
-  square: { name: "Square", control: "0px", small: "0px", panel: "0px" },
-  subtle: { name: "Subtle", control: "3px", small: "2px", panel: "6px" },
-  balanced: { name: "Balanced", control: "6px", small: "4px", panel: "10px" },
-  rounded: { name: "Rounded", control: "10px", small: "6px", panel: "14px" },
+  square: { name: "Square", control: "0rem", small: "0rem", panel: "0rem" },
+  subtle: { name: "Subtle", control: "0.1875rem", small: "0.125rem", panel: "0.375rem" },
+  balanced: { name: "Balanced", control: "0.375rem", small: "0.25rem", panel: "0.625rem" },
+  rounded: { name: "Rounded", control: "0.625rem", small: "0.375rem", panel: "0.875rem" },
 } satisfies Record<Settings["rounding"], { name: string; control: string; small: string; panel: string }>;
 
 export const colorPresets = {
@@ -58,8 +58,7 @@ export function themeStyle(settings: Settings): CSSProperties & Record<`--${stri
     "--accent": `color-mix(in srgb, ${colors.background} 82%, ${colors.primary} 18%)`,
     "--accent-foreground": colors.foreground,
     "--sidebar-width": layout.sidebar,
-    "--nav-row-height": layout.row,
-    "--control-height": layout.control,
+    "--nav-row-height": settings.density === "comfortable" ? "2.1875rem" : layout.row,
     "--radius": corners.control,
     "--radius-small": corners.small,
     "--radius-panel": corners.panel,

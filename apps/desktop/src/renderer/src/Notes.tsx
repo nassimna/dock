@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeftRight, Check, FileText, Inbox, Link2, List, MoreHorizontal, Plus, Save, Tag, Trash2, Type, X } from "lucide-react";
 import type { Item, Snapshot } from "@dock/contracts";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -30,6 +31,11 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
   const queues = useRef(new Map<string, Promise<unknown>>());
   const pending = useRef(new Map<string, number>());
   const revisions = useRef(new Map<string, number>());
+  useEffect(() => window.dock.onBeforeUpdate(async () => {
+    await Promise.all(queues.current.values());
+    if (notes.some(note => draftRef.current[note.id] && draftRef.current[note.id]!.status !== "saved"))
+      throw new Error("Save your notes or resolve their save errors before restarting Dock.");
+  }), [snapshot.items]);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [tagQuery, setTagQuery] = useState("");
@@ -137,12 +143,12 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
     edit({ tags: draft.tags.includes(tag) ? draft.tags.filter(value => value !== tag) : [...draft.tags, tag] });
   }
   const library = <>
-    <Input aria-label="Search notes" placeholder="Search notes…" value={filter} onChange={event => setFilter(event.target.value)} />
+    <Input size="xs" aria-label="Search notes" placeholder="Search notes…" value={filter} onChange={event => setFilter(event.target.value)} />
     <div className="note-library-list">
       {visible.map(item => <Button key={item.id} variant="ghost" className="note-library-row"
         aria-label={`Open note: ${drafts[item.id]?.title || item.title}`} aria-current={note?.id === item.id ? "page" : undefined}
         onClick={() => choose(item.id)}>
-        <FileText size={14} /><span><strong>{drafts[item.id]?.title || item.title}</strong><small>{drafts[item.id]?.space ?? item.space}</small></span>
+        <FileText size="0.875rem" /><span><strong>{drafts[item.id]?.title || item.title}</strong><small>{drafts[item.id]?.space ?? item.space}</small></span>
       </Button>)}
       {!visible.length && <p className="muted">No matching notes.</p>}
     </div>
@@ -156,7 +162,7 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
     <div className="notes-heading">
       <div className="notes-breadcrumb">
         <Popover open={libraryOpen} onOpenChange={setLibraryOpen}>
-          <PopoverTrigger asChild><Button variant="ghost" size="sm" className="notes-library-toggle" aria-label="Open note library"><List size={16} /></Button></PopoverTrigger>
+          <PopoverTrigger asChild><Button variant="ghost" size="xs" className="notes-library-toggle" aria-label="Open note library"><List size="1rem" /></Button></PopoverTrigger>
           <PopoverContent align="start" className="notes-library-popover">{library}</PopoverContent>
         </Popover>
         <h1>Notes</h1><span className="notes-count">{notes.length}</span>
@@ -164,28 +170,28 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
       <div className="notes-heading-actions">
         {note && draft && <div className="note-page-actions">
           <span className="note-save-state" role="status" aria-live="polite">{draft.status === "saving" ? "Saving…" : draft.status === "error" ? "Not saved" : snapshot.system.platform === "darwin" ? "Saved on this Mac" : "Saved on this device"}</span>
-          <Button size="sm" onClick={() => save(note, draftRef.current[note.id] ?? draft)}><Save size={14} /> Save</Button>
-          <ActionButton size="sm" className="note-width-toggle" aria-label={draft.noteStyle.fullWidth ? "Use page width" : "Use full width"}
+          <Button size="xs" onClick={() => save(note, draftRef.current[note.id] ?? draft)}><Save size="0.875rem" /> Save</Button>
+          <ActionButton size="xs" className="note-width-toggle" aria-label={draft.noteStyle.fullWidth ? "Use page width" : "Use full width"}
             aria-pressed={draft.noteStyle.fullWidth ?? false} onClick={() => edit({ noteStyle: { ...draft.noteStyle, fullWidth: !draft.noteStyle.fullWidth } })}>
-            <ArrowLeftRight size={16} /><span>Full width</span>
+            <ArrowLeftRight size="1rem" /><span>Full width</span>
           </ActionButton>
           <Popover>
-            <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Note appearance"><Type size={16} /></Button></PopoverTrigger>
+            <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="Note appearance"><Type size="1rem" /></Button></PopoverTrigger>
             <PopoverContent align="end" className="note-appearance">
-              <label>Font</label><Select value={draft.noteStyle.font ?? "inherit"} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, font: value === "inherit" ? undefined : value as NonNullable<Item["noteStyle"]["font"]> } })}>
-                <SelectTrigger aria-label="Note font"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["system", "Default"], ["serif", "Serif"], ["mono", "Mono"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
+              <Label htmlFor="note-font">Font</Label><Select value={draft.noteStyle.font ?? "inherit"} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, font: value === "inherit" ? undefined : value as NonNullable<Item["noteStyle"]["font"]> } })}>
+                <SelectTrigger id="note-font" aria-label="Note font"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["system", "Default"], ["serif", "Serif"], ["mono", "Mono"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
               </Select>
-              <label>Text size</label><Select value={String(draft.noteStyle.size ?? "inherit")} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, size: value === "inherit" ? undefined : Number(value) as 14 | 16 | 18 } })}>
-                <SelectTrigger aria-label="Note text size"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["14", "Small"], ["16", "Default"], ["18", "Large"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
+              <Label htmlFor="note-text-size">Text size</Label><Select value={String(draft.noteStyle.size ?? "inherit")} onValueChange={value => edit({ noteStyle: { ...draft.noteStyle, size: value === "inherit" ? undefined : Number(value) as 14 | 16 | 18 } })}>
+                <SelectTrigger id="note-text-size" aria-label="Note text size"><SelectValue /></SelectTrigger><SelectContent>{[["inherit", "Use preference"], ["14", "Small"], ["16", "Default"], ["18", "Large"]].map(([value, label]) => <SelectItem key={value} value={value!}>{label}</SelectItem>)}</SelectContent>
               </Select>
             </PopoverContent>
           </Popover>
           <Popover>
-            <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="More note actions"><MoreHorizontal size={16} /></Button></PopoverTrigger>
-            <PopoverContent align="end" className="note-action-menu"><Button variant="ghost" className="danger" onClick={() => onDelete(note)}><Trash2 size={14} /> Delete note</Button></PopoverContent>
+            <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="More note actions"><MoreHorizontal size="1rem" /></Button></PopoverTrigger>
+            <PopoverContent align="end" className="note-action-menu"><Button variant="ghost" className="danger" onClick={() => onDelete(note)}><Trash2 size="0.875rem" /> Delete note</Button></PopoverContent>
           </Popover>
         </div>}
-        <Button variant="outline" size="sm" onClick={() => void create()}><Plus size={15} /> New note</Button>
+        <Button variant="outline" size="xs" onClick={() => void create()}><Plus size="0.9375rem" /> New note</Button>
       </div>
     </div>
     <div className="notes-layout">
@@ -195,40 +201,40 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
       </Empty> : note && draft && <div className={`note-editor ${draft.noteStyle.fullWidth ? "note-full-width" : ""}`} style={style}>
         <Input className="note-title" aria-label="Note title" value={draft.title} maxLength={500} onChange={event => edit({ title: event.target.value })} />
         <div className="note-properties">
-          <div className="note-property"><span className="note-property-label"><Inbox size={16} aria-hidden="true" />Space</span>
+          <div className="note-property"><span className="note-property-label"><Inbox size="1rem" aria-hidden="true" />Space</span>
             <div className="note-property-values">
               <Select value={draft.space} onValueChange={space => edit({ space: space as Item["space"] })}>
-                <SelectTrigger aria-label="Note space" size="sm"><SelectValue /></SelectTrigger>
+                <SelectTrigger aria-label="Note space" size="xs"><SelectValue /></SelectTrigger>
                 <SelectContent position="popper">{["Inbox", "Work", "Personal"].map(space => <SelectItem key={space} value={space}>{space}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>
-          <div className="note-property"><span className="note-property-label"><Tag size={16} aria-hidden="true" />Tags</span>
+          <div className="note-property"><span className="note-property-label"><Tag size="1rem" aria-hidden="true" />Tags</span>
             <div className="note-property-values">
-              {draft.tags.map(tag => <Button key={tag} variant="secondary" size="sm" className="note-tag-chip" aria-label={`Remove tag ${tag}`} onClick={() => toggleTag(tag)}><span>{tag}</span><X size={12} aria-hidden="true" /></Button>)}
+              {draft.tags.map(tag => <Button key={tag} variant="secondary" size="xs" className="note-tag-chip" aria-label={`Remove tag ${tag}`} onClick={() => toggleTag(tag)}><span>{tag}</span><X size="0.75rem" aria-hidden="true" /></Button>)}
               <Popover onOpenChange={open => { if (open) setTagQuery(""); }}>
-                <PopoverTrigger asChild><Button variant="ghost" size="sm" className="note-property-add" aria-label="Edit note tags"><Plus size={14} aria-hidden="true" />Add tags</Button></PopoverTrigger>
+                <PopoverTrigger asChild><Button variant="ghost" size="xs" className="note-property-add" aria-label="Edit note tags"><Plus size="0.875rem" aria-hidden="true" />Add tags</Button></PopoverTrigger>
                 <PopoverContent align="start" className="note-picker">
-                  <Input aria-label="Search or create tag" placeholder="Search or create tag…" maxLength={40} value={tagQuery} onChange={event => setTagQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && tagQuery.trim()) { event.preventDefault(); toggleTag(tagQuery.trim()); setTagQuery(""); } }} />
-                  <div className="note-picker-options">{matches.map(tag => <Button variant="ghost" key={tag} onClick={() => toggleTag(tag)} disabled={!draft.tags.includes(tag) && draft.tags.length >= 30}><Check size={14} className={draft.tags.includes(tag) ? "" : "invisible"} />{tag}</Button>)}</div>
-                  {tagQuery.trim() && !allTags.includes(tagQuery.trim()) && <Button variant="ghost" onClick={() => { toggleTag(tagQuery.trim()); setTagQuery(""); }} disabled={draft.tags.length >= 30}><Plus size={14} /> Create “{tagQuery.trim()}”</Button>}
+                  <Input size="xs" aria-label="Search or create tag" placeholder="Search or create tag…" maxLength={40} value={tagQuery} onChange={event => setTagQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter" && tagQuery.trim()) { event.preventDefault(); toggleTag(tagQuery.trim()); setTagQuery(""); } }} />
+                  <div className="note-picker-options">{matches.map(tag => <Button variant="ghost" size="xs" key={tag} onClick={() => toggleTag(tag)} disabled={!draft.tags.includes(tag) && draft.tags.length >= 30}><Check size="0.875rem" className={draft.tags.includes(tag) ? "" : "invisible"} />{tag}</Button>)}</div>
+                  {tagQuery.trim() && !allTags.includes(tagQuery.trim()) && <Button variant="ghost" onClick={() => { toggleTag(tagQuery.trim()); setTagQuery(""); }} disabled={draft.tags.length >= 30}><Plus size="0.875rem" /> Create “{tagQuery.trim()}”</Button>}
                   {!matches.length && !tagQuery.trim() && <p className="muted">Type a name to create your first tag.</p>}
                 </PopoverContent>
               </Popover>
             </div>
           </div>
-          <div className="note-property"><span className="note-property-label"><Link2 size={16} aria-hidden="true" />Linked tasks</span>
+          <div className="note-property"><span className="note-property-label"><Link2 size="1rem" aria-hidden="true" />Linked tasks</span>
             <div className="note-property-values">
               {linkedTasks.map(task => <div className="note-task-chip" key={task.id}>
-                <Button variant="ghost" size="sm" onClick={() => onTask(task)}><Link2 size={14} aria-hidden="true" /><span>{task.title}</span></Button>
-                <Button variant="ghost" size="icon" aria-label={`Unlink ${task.title}`} disabled={linking !== null} onClick={() => void linkTask(task, false)}><X size={12} aria-hidden="true" /></Button>
+                <Button variant="ghost" size="xs" onClick={() => onTask(task)}><Link2 size="0.875rem" aria-hidden="true" /><span>{task.title}</span></Button>
+                <Button variant="ghost" size="icon-xs" aria-label={`Unlink ${task.title}`} disabled={linking !== null} onClick={() => void linkTask(task, false)}><X size="0.75rem" aria-hidden="true" /></Button>
               </div>)}
               <Popover onOpenChange={open => { if (open) { setTaskQuery(""); setTaskError(""); } }}>
-                <PopoverTrigger asChild><Button variant="ghost" size="sm" className="note-property-add" aria-label="Edit linked tasks"><Plus size={14} aria-hidden="true" />Link task</Button></PopoverTrigger>
+                <PopoverTrigger asChild><Button variant="ghost" size="xs" className="note-property-add" aria-label="Edit linked tasks"><Plus size="0.875rem" aria-hidden="true" />Link task</Button></PopoverTrigger>
                 <PopoverContent align="start" className="note-picker">
-                  <Input aria-label="Search tasks to link" placeholder="Search tasks…" value={taskQuery} onChange={event => setTaskQuery(event.target.value)} />
+                  <Input size="xs" aria-label="Search tasks to link" placeholder="Search tasks…" value={taskQuery} onChange={event => setTaskQuery(event.target.value)} />
                   <div className="note-picker-options">{snapshot.items.filter(item => item.kind === "task" && item.title.toLowerCase().includes(taskQuery.toLowerCase())).map(task => <Button key={task.id} variant="ghost" disabled={linking !== null} onClick={() => void linkTask(task, task.linkedNoteId !== note.id)}>
-                    <Check size={14} className={task.linkedNoteId === note.id ? "" : "invisible"} /><span>{task.title}<small>{task.linkedNoteId && task.linkedNoteId !== note.id ? "Moves link from another note" : task.space}</small></span>
+                    <Check size="0.875rem" className={task.linkedNoteId === note.id ? "" : "invisible"} /><span>{task.title}<small>{task.linkedNoteId && task.linkedNoteId !== note.id ? "Moves link from another note" : task.space}</small></span>
                   </Button>)}</div>
                   {!snapshot.items.some(item => item.kind === "task" && item.title.toLowerCase().includes(taskQuery.toLowerCase())) && <p className="muted">No matching tasks. Create a task first.</p>}
                   {taskError && <p role="alert" className="note-error">{taskError}</p>}
@@ -238,8 +244,8 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
           </div>
         </div>
         {draft.status === "error" && <div className="note-error" role="alert"><p>{draft.error}</p><div>
-          <Button variant="outline" size="sm" onClick={() => { revisions.current.set(note.id, note.revision); save(note, draft); }}>Retry save</Button>
-          <Button variant="outline" size="sm" onClick={() => { revisions.current.set(note.id, note.revision); put(note.id, initialDraft(note)); }}>Use saved version</Button>
+          <Button variant="outline" size="xs" onClick={() => { revisions.current.set(note.id, note.revision); save(note, draft); }}>Retry save</Button>
+          <Button variant="outline" size="xs" onClick={() => { revisions.current.set(note.id, note.revision); put(note.id, initialDraft(note)); }}>Use saved version</Button>
         </div><small>Your draft stays here until you replace it.</small></div>}
         <NoteEditor key={note.id} value={draft.body} onChange={body => edit({ body })} notes={notes} onOpenNote={choose}>
           <span className="note-sync-state">{!snapshot.sync.connected ? "Local only" : snapshot.sync.phase === "synced" && draft.status === "saved" ? "Synced" : snapshot.sync.phase === "offline" ? "Offline · sync pending" : snapshot.sync.phase === "error" ? "Sync needs attention" : "Sync pending"}</span>

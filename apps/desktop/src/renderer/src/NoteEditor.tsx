@@ -288,7 +288,7 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
   ];
   function palette(block: boolean) {
     return <div className="note-color-palette">{["Text color", "Background color"].map((label, index) => <div key={label}><span className="group-label">{label}</span><div className="note-color-grid">
-      {noteColors.map(color => <Button key={color} variant="ghost" size="icon" aria-label={`${label}: ${color}`} title={`${label}: ${color}`}
+      {noteColors.map(color => <Button key={color} variant="ghost" size="icon-xs" aria-label={`${label}: ${color}`} title={`${label}: ${color}`}
         style={{ color: color === "default" || index ? "var(--foreground)" : `var(--note-color-${color})`, backgroundColor: index && color !== "default" ? `var(--note-bg-${color})` : "var(--card)" }}
         onMouseDown={event => event.preventDefault()} onClick={() => {
           const selected = color === "default" ? null : `var(--note-${index ? "bg" : "color"}-${color})`;
@@ -299,78 +299,78 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
     </div></div>)}</div>;
   }
   const commandMenu = <Popover open={commandOpen} onOpenChange={open => { setCommandOpen(open); if (!open) { commandRange.current = null; insertAfter.current = null; } }}>
-    <PopoverTrigger asChild><Button variant="ghost" size="sm" aria-label="Commands" onClick={() => openCommands()}><Plus size={14} /> Commands</Button></PopoverTrigger>
+    <PopoverTrigger asChild><Button variant="ghost" size="xs" aria-label="Commands" onClick={() => openCommands()}><Plus size="0.875rem" /> Commands</Button></PopoverTrigger>
     <PopoverContent align="start" className="note-command-menu" onCloseAutoFocus={event => event.preventDefault()}>
-      <div className="note-command-search"><Search size={13} /><Input aria-label="Search commands" placeholder="Search commands…" value={commandQuery} onChange={event => { setCommandQuery(event.target.value); setCommandIndex(0); }}
+      <div className="note-command-search"><Search size="0.8125rem" /><Input size="xs" aria-label="Search commands" placeholder="Search commands…" value={commandQuery} onChange={event => { setCommandQuery(event.target.value); setCommandIndex(0); }}
         onKeyDown={event => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setCommandIndex(index => matches.length ? (index + (event.key === "ArrowDown" ? 1 : -1) + matches.length) % matches.length : 0); }
           if (event.key === "Enter") { event.preventDefault(); runCommand(commandIndex); }
         }} /></div>
-      <div className="note-command-results" role="listbox" aria-label="Block commands">{matches.map((command, index) => <Button key={command.label} variant="ghost" role="option" aria-selected={index === commandIndex}
+      <div className="note-command-results" role="listbox" aria-label="Block commands">{matches.map((command, index) => <Button key={command.label} variant="ghost" size="xs" role="option" aria-selected={index === commandIndex}
         ref={element => { if (index === commandIndex && commandOpen) element?.scrollIntoView({ block: "nearest" }); }}
-        onMouseEnter={() => setCommandIndex(index)} onClick={() => runCommand(index)}><command.icon size={14} /><span>{command.label}</span></Button>)}
+        onMouseEnter={() => setCommandIndex(index)} onClick={() => runCommand(index)}><command.icon size="0.875rem" /><span>{command.label}</span></Button>)}
         {!matches.length && <p className="muted">No commands found.</p>}
       </div>
     </PopoverContent>
   </Popover>;
   const formatting = <Popover open={formatOpen} onOpenChange={setFormatOpen}>
-    <PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="More formatting"><MoreHorizontal size={15} /></Button></PopoverTrigger>
+    <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="More formatting"><MoreHorizontal size="0.9375rem" /></Button></PopoverTrigger>
     <PopoverContent align="end" className="note-format-menu" onFocusOutside={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}>
-      <Button variant="ghost" size="sm" onMouseDown={event => event.preventDefault()} onClick={beginLink}><Link2 size={14} /> Add or edit link</Button>
-      <div className="note-format-marks">{marks.map(action => <Button key={action.label} variant="ghost" size="icon" aria-label={action.label} aria-pressed={action.active} onMouseDown={event => event.preventDefault()} onClick={action.run}><action.icon size={15} /></Button>)}</div>
-      <div className="note-format-blocks">{[["Text", "paragraph", 0], ["Heading 1", "heading", 1], ["Heading 2", "heading", 2], ["Heading 3", "heading", 3]].map(([label, type, level]) => <Button key={label} variant="ghost" size="sm" onMouseDown={event => event.preventDefault()} onClick={() => { if (type === "heading") editor.chain().focus().setHeading({ level: Number(level) as 1 | 2 | 3 }).run(); else editor.chain().focus().setParagraph().run(); }}>{label}</Button>)}</div>
+      <Button variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={beginLink}><Link2 size="0.875rem" /> Add or edit link</Button>
+      <div className="note-format-marks">{marks.map(action => <Button key={action.label} variant="ghost" size="icon-xs" aria-label={action.label} aria-pressed={action.active} onMouseDown={event => event.preventDefault()} onClick={action.run}><action.icon size="0.9375rem" /></Button>)}</div>
+      <div className="note-format-blocks">{[["Text", "paragraph", 0], ["Heading 1", "heading", 1], ["Heading 2", "heading", 2], ["Heading 3", "heading", 3]].map(([label, type, level]) => <Button key={label} variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={() => { if (type === "heading") editor.chain().focus().setHeading({ level: Number(level) as 1 | 2 | 3 }).run(); else editor.chain().focus().setParagraph().run(); }}>{label}</Button>)}</div>
       {palette(false)}
-      <Button variant="ghost" size="sm" onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().focus().unsetAllMarks().run()}>Clear formatting</Button>
-      <div className="note-indent-actions"><Button variant="ghost" size="sm" disabled={!editor.can().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor.chain().focus().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Indent</Button><Button variant="ghost" size="sm" disabled={!editor.can().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor.chain().focus().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Outdent</Button></div>
+      <Button variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().focus().unsetAllMarks().run()}>Clear formatting</Button>
+      <div className="note-indent-actions"><Button variant="ghost" size="xs" disabled={!editor.can().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor.chain().focus().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Indent</Button><Button variant="ghost" size="xs" disabled={!editor.can().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor.chain().focus().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Outdent</Button></div>
       {!!state.selectedText && <small>{state.selectedText.trim().split(/\s+/).filter(Boolean).length} words · {state.selectedText.length} characters selected</small>}
     </PopoverContent>
   </Popover>;
   return <div className="rich-note" ref={container}>
     <div className="editor-toolbar">
-      <div className="note-mode-switch" aria-label="Note editing mode">{([['write', 'Write'], ['source', 'Markdown'], ['read', 'Read']] as const).map(([value, label]) => <Button key={value} variant="ghost" size="sm" aria-pressed={mode === value} onClick={() => { if (value === "source") setSourceText(noteMarkup(editor)); setMode(value); }}>{label}</Button>)}</div>
+      <div className="note-mode-switch" aria-label="Note editing mode">{([['write', 'Write'], ['source', 'Markdown'], ['read', 'Read']] as const).map(([value, label]) => <Button key={value} variant="ghost" size="xs" aria-pressed={mode === value} onClick={() => { if (value === "source") setSourceText(noteMarkup(editor)); setMode(value); }}>{label}</Button>)}</div>
       <div className="editor-mode-actions">{mode === "write" && <>{commandMenu}{formatting}</>}
-        {mode !== "read" && <><Button variant="ghost" size="icon" aria-label="Undo note edit" disabled={!state.undo} onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().undo().run()}><Undo2 size={14} /></Button><Button variant="ghost" size="icon" aria-label="Redo note edit" disabled={!state.redo} onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().redo().run()}><Redo2 size={14} /></Button></>}
-        <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Note outline"><ListTree size={15} /></Button></PopoverTrigger><PopoverContent align="end" className="note-outline">{state.headings.length ? state.headings.map(heading => <Button key={heading.pos} variant="ghost" size="sm" onClick={() => jumpToHeading(editor, heading.pos)} style={{ paddingLeft: `${(heading.level - 1) * 12}px` }}>{heading.title}</Button>) : <p className="muted">Add headings to see an outline.</p>}</PopoverContent></Popover>
+        {mode !== "read" && <><Button variant="ghost" size="icon-xs" aria-label="Undo note edit" disabled={!state.undo} onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().undo().run()}><Undo2 size="0.875rem" /></Button><Button variant="ghost" size="icon-xs" aria-label="Redo note edit" disabled={!state.redo} onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().redo().run()}><Redo2 size="0.875rem" /></Button></>}
+        <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="Note outline"><ListTree size="0.9375rem" /></Button></PopoverTrigger><PopoverContent align="end" className="note-outline">{state.headings.length ? state.headings.map(heading => <Button key={heading.pos} variant="ghost" size="xs" onClick={() => jumpToHeading(editor, heading.pos)} style={{ paddingLeft: `${(heading.level - 1) * 0.75}rem` }}>{heading.title}</Button>) : <p className="muted">Add headings to see an outline.</p>}</PopoverContent></Popover>
       </div>
     </div>
     {mode === "write" && <BubbleMenu editor={editor} options={bubbleOptions} className="note-selection-toolbar" shouldShow={showSelection}>
-      {marks.map(action => <Button key={action.label} variant="ghost" size="icon" aria-label={action.label} aria-pressed={action.active} onMouseDown={event => event.preventDefault()} onClick={action.run}><action.icon size={15} /></Button>)}
-      <Button variant="ghost" size="icon" aria-label="Add or edit link" onMouseDown={event => event.preventDefault()} onClick={beginLink}><Link2 size={15} /></Button>
-      <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Text and background color" onMouseDown={event => event.preventDefault()}><Type size={15} /></Button></PopoverTrigger><PopoverContent className="note-format-menu" onFocusOutside={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}>{palette(false)}</PopoverContent></Popover>
-      <Button variant="ghost" size="icon" aria-label="Open formatting menu" onMouseDown={event => event.preventDefault()} onClick={() => setFormatOpen(true)}><MoreHorizontal size={15} /></Button>
+      {marks.map(action => <Button key={action.label} variant="ghost" size="icon-xs" aria-label={action.label} aria-pressed={action.active} onMouseDown={event => event.preventDefault()} onClick={action.run}><action.icon size="0.9375rem" /></Button>)}
+      <Button variant="ghost" size="icon-xs" aria-label="Add or edit link" onMouseDown={event => event.preventDefault()} onClick={beginLink}><Link2 size="0.9375rem" /></Button>
+      <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="Text and background color" onMouseDown={event => event.preventDefault()}><Type size="0.9375rem" /></Button></PopoverTrigger><PopoverContent className="note-format-menu" onFocusOutside={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}>{palette(false)}</PopoverContent></Popover>
+      <Button variant="ghost" size="icon-xs" aria-label="Open formatting menu" onMouseDown={event => event.preventDefault()} onClick={() => setFormatOpen(true)}><MoreHorizontal size="0.9375rem" /></Button>
     </BubbleMenu>}
     <Popover open={linkOpen} onOpenChange={setLinkOpen}>
       <PopoverAnchor asChild><span className="note-menu-anchor" /></PopoverAnchor>
       <PopoverContent className="note-link-popover" align="end" onCloseAutoFocus={event => event.preventDefault()}><form className="link-form" onSubmit={saveLink}>
-        <Input aria-label="Link URL" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com" required />
-        <div><Button size="sm" type="submit">Apply link</Button><Button variant="ghost" size="sm" type="button" onClick={() => { editor.chain().focus().extendMarkRange("link").unsetLink().run(); setLinkOpen(false); }}>Remove link</Button></div>
+        <Input size="xs" aria-label="Link URL" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com" required />
+        <div><Button size="xs" type="submit">Apply link</Button><Button variant="ghost" size="xs" type="button" onClick={() => { editor.chain().focus().extendMarkRange("link").unsetLink().run(); setLinkOpen(false); }}>Remove link</Button></div>
         {linkError && <p className="note-error" role="alert">{linkError}</p>}
       </form></PopoverContent>
     </Popover>
     <Popover open={noteLinkOpen} onOpenChange={setNoteLinkOpen}>
       <PopoverAnchor asChild><span className="note-menu-anchor" /></PopoverAnchor><PopoverContent className="note-picker" onCloseAutoFocus={event => event.preventDefault()}>
-        <Input aria-label="Search notes to link" placeholder="Search notes…" value={noteQuery} onChange={event => setNoteQuery(event.target.value)} />
-        <div className="note-picker-options">{notes.filter(note => note.title.toLowerCase().includes(noteQuery.toLowerCase())).map(note => <Button variant="ghost" key={note.id} onClick={() => {
+        <Input size="xs" aria-label="Search notes to link" placeholder="Search notes…" value={noteQuery} onChange={event => setNoteQuery(event.target.value)} />
+        <div className="note-picker-options">{notes.filter(note => note.title.toLowerCase().includes(noteQuery.toLowerCase())).map(note => <Button variant="ghost" size="xs" key={note.id} onClick={() => {
           insertInline([{ type: "text", text: note.title, marks: [{ type: "link", attrs: { href: `dock-note://${note.id}` } }] }, { type: "text", text: " " }]); setNoteLinkOpen(false);
-        }}><Link2 size={14} />{note.title}</Button>)}</div>
+        }}><Link2 size="0.875rem" />{note.title}</Button>)}</div>
         {!notes.some(note => note.title.toLowerCase().includes(noteQuery.toLowerCase())) && <p className="muted">No matching notes.</p>}
       </PopoverContent>
     </Popover>
     {mode === "write" && state.block && <div className="note-block-tools" style={{ top: blockTop }}>
-      <Button variant="ghost" size="icon" aria-label="Insert below this block" onMouseDown={event => event.preventDefault()} onClick={() => openCommands(state.pos + state.size)}><Plus size={13} /></Button>
-      <Popover open={blockMenuOpen} onOpenChange={setBlockMenuOpen}><PopoverTrigger asChild><Button variant="ghost" size="icon" aria-label="Block actions; drag to reorder" onClick={event => { if (dragMoved.current) { event.preventDefault(); dragMoved.current = false; } }} onMouseDown={event => event.preventDefault()} onPointerDown={event => {
+      <Button variant="ghost" size="icon-xs" aria-label="Insert below this block" onMouseDown={event => event.preventDefault()} onClick={() => openCommands(state.pos + state.size)}><Plus size="0.8125rem" /></Button>
+      <Popover open={blockMenuOpen} onOpenChange={setBlockMenuOpen}><PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="Block actions; drag to reorder" onClick={event => { if (dragMoved.current) { event.preventDefault(); dragMoved.current = false; } }} onMouseDown={event => event.preventDefault()} onPointerDown={event => {
         if (event.button !== 0) return;
         dragMoved.current = false;
         drag.current = { from: state.pos, size: state.size, content: state.block!, startY: event.clientY, target: null };
-      }}><GripVertical size={13} /></Button></PopoverTrigger>
+      }}><GripVertical size="0.8125rem" /></Button></PopoverTrigger>
         <PopoverContent align="start" className="note-block-menu" onFocusOutside={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}>
-          <span className="group-label">Turn into</span><div className="note-format-blocks">{[0, 1, 2, 3].map(level => <Button key={level} variant="ghost" size="sm" onClick={() => convert(level ? "heading" : "paragraph", level)}>{level ? `Heading ${level}` : "Text"}</Button>)}</div>
-          <Button variant="ghost" size="sm" onClick={() => { editor.chain().focus().toggleBlockquote().run(); setBlockMenuOpen(false); }}>Quote</Button>
+          <span className="group-label">Turn into</span><div className="note-format-blocks">{[0, 1, 2, 3].map(level => <Button key={level} variant="ghost" size="xs" onClick={() => convert(level ? "heading" : "paragraph", level)}>{level ? `Heading ${level}` : "Text"}</Button>)}</div>
+          <Button variant="ghost" size="xs" onClick={() => { editor.chain().focus().toggleBlockquote().run(); setBlockMenuOpen(false); }}>Quote</Button>
           {palette(true)}
-          <Button variant="ghost" size="sm" disabled={state.pos === 0} onClick={() => moveBlock(-1)}>Move up</Button>
-          <Button variant="ghost" size="sm" disabled={state.pos + state.size >= editor.state.doc.content.size} onClick={() => moveBlock(1)}>Move down</Button>
-          <Button variant="ghost" size="sm" onClick={() => { editor.chain().focus().insertContentAt(state.pos + state.size, state.block!).run(); setBlockMenuOpen(false); }}>Duplicate block</Button>
-          <Button variant="ghost" size="sm" className="danger" onClick={() => { editor.chain().focus().deleteRange({ from: state.pos, to: state.pos + state.size }).run(); setBlockMenuOpen(false); }}>Delete block</Button>
+          <Button variant="ghost" size="xs" disabled={state.pos === 0} onClick={() => moveBlock(-1)}>Move up</Button>
+          <Button variant="ghost" size="xs" disabled={state.pos + state.size >= editor.state.doc.content.size} onClick={() => moveBlock(1)}>Move down</Button>
+          <Button variant="ghost" size="xs" onClick={() => { editor.chain().focus().insertContentAt(state.pos + state.size, state.block!).run(); setBlockMenuOpen(false); }}>Duplicate block</Button>
+          <Button variant="ghost" size="xs" className="danger" onClick={() => { editor.chain().focus().deleteRange({ from: state.pos, to: state.pos + state.size }).run(); setBlockMenuOpen(false); }}>Delete block</Button>
         </PopoverContent>
       </Popover>
     </div>}
@@ -386,7 +386,7 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
         if (action === "delete-column") chain.deleteColumn().run();
         if (action === "header") chain.toggleHeaderRow().run();
         if (action === "clear") { const { $from } = editor.state.selection; for (let depth = $from.depth; depth > 0; depth--) { if (["tableCell", "tableHeader"].includes($from.node(depth).type.name)) { chain.deleteRange({ from: $from.start(depth), to: $from.end(depth) }).run(); break; } } }
-      }}><SelectTrigger aria-label="Table actions" size="sm"><SelectValue placeholder="Table actions" /></SelectTrigger><SelectContent>{[["row-after", "Add row below"], ["row-before", "Add row above"], ["column-after", "Add column after"], ["column-before", "Add column before"], ["delete-row", "Delete row"], ["delete-column", "Delete column"], ["header", "Toggle header row"], ["clear", "Clear cell"]].map(([value, label]) => <SelectItem key={value} value={value!} disabled={(value === "delete-row" && state.rows <= 1) || (value === "delete-column" && state.columns <= 1)}>{label}</SelectItem>)}</SelectContent></Select>
+      }}><SelectTrigger aria-label="Table actions" size="xs"><SelectValue placeholder="Table actions" /></SelectTrigger><SelectContent>{[["row-after", "Add row below"], ["row-before", "Add row above"], ["column-after", "Add column after"], ["column-before", "Add column before"], ["delete-row", "Delete row"], ["delete-column", "Delete column"], ["header", "Toggle header row"], ["clear", "Clear cell"]].map(([value, label]) => <SelectItem key={value} value={value!} disabled={(value === "delete-row" && state.rows <= 1) || (value === "delete-column" && state.columns <= 1)}>{label}</SelectItem>)}</SelectContent></Select>
     </div>}
     {mode === "source" && sourceText.trim().startsWith("<") && <p className="note-source-hint">Rich blocks and colors use HTML in this Markdown source.</p>}
     <div className="note-writing-area">
@@ -396,7 +396,7 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
       }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) editor.commands.redo(); else editor.commands.undo(); } }} maxLength={200000} placeholder="Write Markdown…" /> : <EditorContent editor={editor} className="note-body rich-text" data-mode={mode} />}
       {!value && mode === "write" && <p className="editor-hint">Start writing, or type / for commands.</p>}
     </div>
-    {mode === "write" && <Button variant="ghost" size="sm" className="note-add-block" onClick={() => openCommands(editor.state.doc.content.size)}><Plus size={13} /> Add a block</Button>}
+    {mode === "write" && <Button variant="ghost" size="xs" className="note-add-block" onClick={() => openCommands(editor.state.doc.content.size)}><Plus size="0.8125rem" /> Add a block</Button>}
     <footer className="editor-footer"><span>{state.words} words</span>{children}</footer>
   </div>;
 }

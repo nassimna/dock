@@ -110,7 +110,10 @@ export const settingsSchema = z.object({
     .default("CommandOrControl+Shift+Space"),
   closeToTray: z.boolean().default(true),
   capturePinned: z.boolean().default(true),
+  miniPinned: z.boolean().default(true),
   launchAtLogin: z.boolean().default(false),
+  openMiniAtStartup: z.boolean().default(false),
+  automaticUpdates: z.boolean().default(true),
   quietHours: z.boolean().default(false),
   quietStart: clockSchema.default("22:00"),
   quietEnd: clockSchema.default("07:00"),
@@ -188,9 +191,19 @@ export type SyncRecord = z.infer<typeof syncRecordSchema>;
 export type SyncMutation = z.infer<typeof syncMutationSchema>;
 export type SyncStatus = z.infer<typeof syncStatusSchema>;
 
+export const updateStateSchema = z.object({
+  status: z.enum(["unavailable", "idle", "checking", "current", "available", "downloading", "ready", "installing", "error"]),
+  version: z.string().default(""),
+  progress: z.number().min(0).max(100).default(0),
+  message: z.string().default(""),
+  retry: z.enum(["check", "download", "install"]).default("check"),
+});
+export type UpdateState = z.infer<typeof updateStateSchema>;
+
 export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("snapshot") }),
   z.object({ type: z.literal("capture.resize"), height: z.number().int().min(180).max(600) }),
+  z.object({ type: z.literal("update"), action: z.enum(["check", "download", "install"]) }),
   syncLoginSchema.extend({ type: z.literal("sync.login"), endpoint: syncEndpointSchema }),
   syncSignupSchema.extend({ type: z.literal("sync.signup"), endpoint: syncEndpointSchema }),
   z.object({ type: z.literal("sync.now") }),
@@ -228,6 +241,7 @@ export const snapshotSchema = z.object({
   items: z.array(itemSchema),
   settings: settingsSchema,
   sync: syncStatusSchema,
+  update: updateStateSchema,
   system: z.object({
     platform: z.string(),
     version: z.string(),
@@ -246,7 +260,7 @@ export type Item = z.infer<typeof itemSchema>;
 export type ItemInput = z.input<typeof itemInputSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type Command = z.infer<typeof commandSchema>;
-export type DataCommand = Exclude<Command, { type: "window" | "capture.resize" | "sync.login" | "sync.signup" | "sync.now" | "sync.disconnect" }>;
+export type DataCommand = Exclude<Command, { type: "window" | "update" | "capture.resize" | "sync.login" | "sync.signup" | "sync.now" | "sync.disconnect" }>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type StoreSnapshot = Pick<Snapshot, "items" | "settings">;
 export type WindowRole = "main" | "capture" | "mini";
@@ -264,6 +278,8 @@ export interface DesktopBridge {
   dispatch(command: Command): Promise<Snapshot>;
   onChanged(listener: (snapshot: Snapshot) => void): () => void;
   onCapture(listener: () => void): () => void;
+  onBeforeUpdate(listener: () => Promise<void>): () => void;
+  prepareUpdate(): Promise<void>;
 }
 
 export function localDate(date = new Date()): string {

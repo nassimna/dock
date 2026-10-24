@@ -14,7 +14,8 @@ import {
   Tray,
 } from "electron";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import electronUpdater from "electron-updater";
 import {
   parseCommand,
   syncCredentialsSchema,
@@ -26,6 +27,9 @@ import { DockDatabase } from "./database";
 import { startLocalApi } from "./local-api";
 import { checkReminders } from "./reminders";
 import { DockSync } from "./sync";
+import { DockUpdates } from "./updates";
+import { isAdHocMacBundle } from "./mac-update-installer";
+import { AdHocMacUpdater } from "./mac-updater";
 
 app.setName("Dock");
 const dataDirectory =
@@ -37,6 +41,7 @@ app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
 const windows = new Map<WindowRole, BrowserWindow>();
 let database: DockDatabase;
 let sync: DockSync;
+let updates: DockUpdates;
 let syncStopped = false;
 const sessionPath = join(dataDirectory, "sync-session.bin");
 let tray: Tray | null = null;
@@ -53,6 +58,7 @@ function snapshot(): Snapshot {
   return {
     ...database.snapshot(),
     sync: sync.status(),
+    update: updates.state(),
     system: {
       platform: process.platform,
       version: app.getVersion(),
@@ -108,7 +114,7 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
     backgroundColor:
       database.snapshot().settings.theme === "dark" ? "#202827" : "#ffffff",
     resizable: role !== "capture",
-    alwaysOnTop: role === "mini" && topmostSupported,
+    alwaysOnTop: role === "mini" && topmostSupported && database.snapshot().settings.miniPinned,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: true,
@@ -120,6 +126,8 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
     window.setWindowButtonVisibility(true);
   if (role === "capture" && topmostSupported)
     window.setAlwaysOnTop(database.snapshot().settings.capturePinned);
+  if (role === "mini")
+    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   windows.set(role, window);
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (URL.canParse(url) && ["http:", "https:", "mailto:"].includes(new URL(url).protocol))
@@ -199,7 +207,10 @@ async function dispatch(
   command: Command,
   sender?: BrowserWindow,
 ): Promise<Snapshot> {
-  if (command.type === "capture.resize") {
+  if (command.type === "update") {
+    if (!sender) throw new Error("App updates require the desktop UI.");
+    await updates[command.action]();
+  } else if (command.type === "capture.resize") {
     if (!sender || sender !== windows.get("capture"))
       throw new Error("Only quick capture can resize its panel.");
     const bounds = sender.getBounds();
@@ -277,12 +288,16 @@ async function dispatch(
     }
     if (topmostSupported && previous.capturePinned !== command.settings.capturePinned)
       windows.get("capture")?.setAlwaysOnTop(command.settings.capturePinned);
+    if (topmostSupported && previous.miniPinned !== command.settings.miniPinned)
+      windows.get("mini")?.setAlwaysOnTop(command.settings.miniPinned);
     if (changed) {
       globalShortcut.unregister(previous.shortcut);
       shortcutRegistered = true;
     }
-    if (snapshot().system.launchAtLoginSupported)
+    if (snapshot().system.launchAtLoginSupported && previous.launchAtLogin !== command.settings.launchAtLogin)
       app.setLoginItemSettings({ openAtLogin: command.settings.launchAtLogin });
+    if (previous.automaticUpdates !== command.settings.automaticUpdates)
+      updates.configure(command.settings.automaticUpdates);
   } else {
     database.execute(command);
     if (command.type.startsWith("item.")) sync.localChanged();
@@ -302,6 +317,17 @@ if (!app.requestSingleInstanceLock()) {
       mkdirSync(directory, { recursive: true });
       database = new DockDatabase(join(directory, "dock.sqlite"));
       sync = new DockSync(database, broadcast);
+      const supported = app.isPackaged && (process.platform !== "linux" || !!process.env.APPIMAGE);
+      const bundle = resolve(process.resourcesPath, "../..");
+      const backend = !supported ? null : process.platform === "darwin" && isAdHocMacBundle(bundle)
+        ? new AdHocMacUpdater(bundle) : electronUpdater.autoUpdater;
+      updates = new DockUpdates(backend, () => {
+        if (updates.state().status === "error") quitting = false;
+        broadcast();
+      }, async () => {
+        await Promise.all([...windows.values()].map(window => window.webContents.executeJavaScript("window.dock.prepareUpdate()")));
+        quitting = true;
+      });
       if (existsSync(sessionPath)) {
         try {
           sync.restore(syncCredentialsSchema.parse(JSON.parse(safeStorage.decryptString(readFileSync(sessionPath)))));
@@ -345,6 +371,8 @@ if (!app.requestSingleInstanceLock()) {
         console.error("Dock tray unavailable:", error);
       }
       await openWindow("main");
+      if (settings.openMiniAtStartup) await openWindow("mini");
+      updates.configure(settings.automaticUpdates);
       reminderTimer = setInterval(tick, 15_000);
       powerMonitor.on("resume", tick);
       tick();
@@ -362,6 +390,7 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on("before-quit", (event) => {
     quitting = true;
+    updates?.stop();
     if (sync && !syncStopped) {
       event.preventDefault();
       syncStopped = true;

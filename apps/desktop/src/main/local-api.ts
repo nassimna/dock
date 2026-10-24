@@ -40,6 +40,7 @@ export async function startLocalApi(
       );
       if (command.type.startsWith("sync.")) throw new Error("Account actions require the desktop UI.");
       if (command.type === "capture.resize") throw new Error("Resizing capture requires the desktop UI.");
+      if (command.type === "update") throw new Error("App updates require the desktop UI.");
       if (
         command.type === "window" &&
         !["main", "capture", "mini"].includes(command.action)

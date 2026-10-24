@@ -17,7 +17,7 @@ export function ActionButton({ className, ...props }: ButtonProps & { "aria-labe
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="ghost" size="icon" className={cn("icon-button", className)} {...props} />
+        <Button variant="ghost" size="icon-sm" className={cn("icon-button", className)} {...props} />
       </TooltipTrigger>
       <TooltipContent>{props["aria-label"]}</TooltipContent>
     </Tooltip>
@@ -52,7 +52,7 @@ export function TaskRow({
   completion?: "saving" | "complete";
 }) {
   const note = snapshot.items.find((note) => note.id === item.linkedNoteId);
-  const done = item.done || completion === "complete";
+  const done = completion ? !item.done : item.done;
   return (
     <div className={cn("task-row", done && "completed", completion === "complete" && "task-completing")}
       aria-busy={completion === "saving"}>
@@ -80,20 +80,20 @@ export function TaskRow({
           )}
           {item.recurrence !== "none" && (
             <>
-              <Repeat2 size={12} />
+              <Repeat2 size="0.75rem" />
               <span>{item.recurrence}</span>
             </>
           )}
           {note && (
             <>
-              <Link2 size={12} />
+              <Link2 size="0.75rem" />
               <span>{note.title}</span>
             </>
           )}
         </span>
       </Button>
       {!item.done && (!item.scheduledAt || localDate(new Date(item.scheduledAt)) !== localDate()) && (
-        <ActionButton
+        <ActionButton size="icon-xs"
           className="icon-button task-action"
           disabled={!!completion}
           aria-label={`Schedule ${item.title} for today`}
@@ -101,22 +101,22 @@ export function TaskRow({
             ...item, expectedRevision: item.revision, scheduledAt: todaySchedule(),
           } })}
         >
-          <CalendarPlus size={15} />
+          <CalendarPlus size="0.9375rem" />
         </ActionButton>
       )}
-      <ActionButton className="task-action"
+      <ActionButton size="icon-xs" className="task-action"
         disabled={!!completion}
         aria-label={`Edit ${item.title}`} onClick={() => onOpen(item)}>
-        <Pencil size={14} />
+        <Pencil size="0.875rem" />
       </ActionButton>
-      <ActionButton
+      <ActionButton size="icon-xs"
         className={`icon-button ${item.priority ? "starred" : ""}`}
         aria-pressed={item.priority}
         disabled={!!completion}
         aria-label={`${item.priority ? "Remove priority from" : "Prioritize"} ${item.title}`}
         onClick={() => act({ type: "item.priority", id: item.id })}
       >
-        <Star size={17} />
+        <Star size="1.0625rem" />
       </ActionButton>
     </div>
   );
@@ -131,7 +131,7 @@ export function Empty({
 }) {
   return (
     <div className="empty">
-      <FileText size={26} />
+      <FileText size="1.625rem" />
       <h2>{title}</h2>
       <p>{children}</p>
     </div>

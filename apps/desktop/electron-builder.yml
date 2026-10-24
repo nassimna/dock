@@ -13,9 +13,16 @@ linux:
   category: Office
   icon: resources/icon.png
 mac:
-  target: dmg
+  target:
+    - dmg
+    - zip
   category: public.app-category.productivity
   icon: resources/app-icon.icns
+publish:
+  provider: github
+  owner: nassimna
+  repo: dock
+  releaseType: release
 win:
   target: nsis
 nsis:
