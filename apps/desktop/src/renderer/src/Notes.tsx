@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { NoteEditor } from "./NoteEditor";
 import { ActionButton, Empty } from "./components";
 import { errorMessage, type Dispatch } from "./state";
+import { noteFontFamilies } from "@/lib/theme";
 
 type Draft = Pick<Item, "title" | "body" | "space" | "tags" | "noteStyle"> & {
   status: "saved" | "saving" | "error";
@@ -155,7 +156,7 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
   </>;
   const font = draft?.noteStyle.font;
   const style = {
-    ...(font ? { "--note-font": font === "serif" ? 'Georgia, "Times New Roman", serif' : font === "mono" ? '"SFMono-Regular", Consolas, monospace' : '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' } : {}),
+    ...(font ? { "--note-font": noteFontFamilies[font] } : {}),
     ...(draft?.noteStyle.size ? { "--note-font-size": `${draft.noteStyle.size / 16}rem` } : {}),
   } as CSSProperties;
   return <section className="notes-workspace">

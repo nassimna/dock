@@ -7,6 +7,9 @@ import {
 
 const beforeUpdate = new Set<() => Promise<void>>();
 const bridge: DesktopBridge = {
+  moveFloating(x, y) {
+    ipcRenderer.send("dock:move-floating", Math.round(x), Math.round(y));
+  },
   onBeforeUpdate(listener) {
     beforeUpdate.add(listener);
     return () => { beforeUpdate.delete(listener); };
@@ -26,6 +29,18 @@ const bridge: DesktopBridge = {
     return () => {
       ipcRenderer.removeListener("dock:changed", handler);
     };
+  },
+  onNavigate(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, view: unknown) => {
+      if (view === "today" || view === "all" || view === "starred" || view === "settings") listener(view);
+    };
+    ipcRenderer.on("dock:navigate", handler);
+    return () => { ipcRenderer.removeListener("dock:navigate", handler); };
+  },
+  onOpenTask(listener) {
+    const handler = (_event: Electron.IpcRendererEvent, id: unknown) => { if (typeof id === "string") listener(id); };
+    ipcRenderer.on("dock:open-task", handler);
+    return () => { ipcRenderer.removeListener("dock:open-task", handler); };
   },
   onCapture(listener) {
     const handler = () => listener();

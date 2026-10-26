@@ -1,5 +1,7 @@
+import { hostname } from "node:os";
+import { syncFeaturesSchema, sharedProjectsResponseSchema, deviceSchema, privateProjectsSchema, privateProjectsResultSchema, type SyncFeatures, type SyncFeatureCommand } from "../../../../packages/contracts/src/sync-features.ts";
 import {
-  syncEndpointSchema, syncSessionSchema, syncPullResultSchema, syncPushResultSchema,
+  syncEndpointSchema, syncSessionSchema, syncPullResultSchema, syncPushResultSchema, syncRecordSchema,
   type SyncCredentials,
   type Command, type SyncStatus,
 } from "@dock/contracts";
@@ -11,6 +13,7 @@ class SyncRequestError extends Error {}
 
 export class DockSync {
   private credentials: SyncCredentials | null = null;
+  private features: SyncFeatures = syncFeaturesSchema.parse({});
   private phase: SyncStatus["phase"] = "disconnected";
   private error = "";
   private lastSyncedAt: string | null = null;
@@ -25,6 +28,8 @@ export class DockSync {
     this.database = database;
     this.changed = changed;
   }
+
+  statusFeatures(): SyncFeatures { return this.features; }
 
   status(): SyncStatus {
     return {
@@ -57,10 +62,78 @@ export class DockSync {
     if (bound && bound.endpoint !== endpoint)
       throw new Error("Use a separate Dock profile for another sync server.");
     const response = await this.request(endpoint, command.type === "sync.signup" ? "/auth/signup" : "/auth/login", null,
-      { email: command.email, password: command.password, ...(command.type === "sync.signup" ? { inviteCode: command.inviteCode } : {}) });
+      { email: command.email, password: command.password, deviceName: hostname(), ...(command.type === "sync.signup" ? { inviteCode: command.inviteCode } : {}) });
     const session = syncSessionSchema.parse(response);
+    const recoveryCode = (response as { recoveryCode?: unknown }).recoveryCode;
+    if (typeof recoveryCode === "string" && /^[0-9a-f]{64}$/.test(recoveryCode)) this.features.recoveryCode = recoveryCode;
     this.database.bindSyncAccount(endpoint, session.accountId);
     return { ...session, endpoint };
+  }
+
+  async feature(command: SyncFeatureCommand): Promise<SyncCredentials | null> {
+    if (this.running) await this.running;
+    this.features.error = "";
+    try {
+      if (command.type === "sync.recover") {
+        const endpoint = syncEndpointSchema.parse(command.endpoint);
+        const bound = this.database.syncAccount();
+        if (bound && bound.endpoint !== endpoint) throw new Error("Use the sync server already connected to this workspace.");
+        const response = await this.request(endpoint, "/auth/recover", null, { ...command, expectedAccountId: bound?.accountId });
+        const session = syncSessionSchema.parse(response);
+        this.database.bindSyncAccount(endpoint, session.accountId);
+        const code = (response as { recoveryCode?: unknown }).recoveryCode;
+        this.features.recoveryCode = typeof code === "string" ? code : "";
+        return { ...session, endpoint };
+      }
+      const credentials = this.credentials;
+      if (!credentials) throw new Error("Connect Dock Sync before managing your account or shared projects.");
+      if (command.type === "sync.recovery.create") {
+        const response = await this.request(credentials.endpoint, "/auth/recovery", credentials.token, {});
+        const code = (response as { recoveryCode?: unknown }).recoveryCode;
+        if (typeof code !== "string" || !/^[0-9a-f]{64}$/.test(code)) throw new Error("The sync server returned an invalid recovery code.");
+        this.features.recoveryCode = code;
+      } else if (command.type === "sync.devices") {
+        await this.refreshDevices(credentials);
+      } else if (command.type === "sync.device.revoke") {
+        await this.request(credentials.endpoint, "/auth/revoke", credentials.token, { id: command.id });
+        await this.refreshDevices(credentials);
+      } else {
+        const path = command.type === "sync.project.share" ? "/projects" : command.type === "sync.project.invite" ? "/projects/invite" : "/projects/remove";
+        await this.request(credentials.endpoint, path, credentials.token, command);
+        await this.refreshProjects(credentials);
+        this.localChanged();
+      }
+      this.changed();
+      return null;
+    } catch (error) {
+      this.features.error = error instanceof Error ? error.message : "The sync request failed.";
+      this.changed();
+      throw error;
+    }
+  }
+
+  private async refreshDevices(credentials: SyncCredentials): Promise<void> {
+    const response = await this.request(credentials.endpoint, "/auth/devices", credentials.token) as { devices?: unknown };
+    this.features.devices = deviceSchema.array().parse(response.devices);
+  }
+
+  private async refreshProjects(credentials: SyncCredentials): Promise<void> {
+    const known = this.features.projects.map(project => project.id).join(",");
+    const response = sharedProjectsResponseSchema.parse(await this.request(credentials.endpoint, `/projects?known=${encodeURIComponent(known)}`, credentials.token));
+    this.database.applySharedProjects(response.projects, response.projects.map(project => project.id));
+    this.database.applySync(response.records.map(record => syncRecordSchema.parse(record)));
+    this.features.projects = response.projects;
+  }
+
+  private async refreshPrivateProjects(credentials: SyncCredentials): Promise<void> {
+    const remote = privateProjectsSchema.parse(await this.request(credentials.endpoint, "/workspace", credentials.token));
+    this.database.applyPrivateProjects(remote.projects, remote.version);
+    const local = this.database.projectSyncState();
+    if (!local.dirty) return;
+    const result = privateProjectsResultSchema.parse(await this.request(credentials.endpoint, "/workspace", credentials.token,
+      { projects: local.projects, baseVersion: local.version, mutationId: local.mutationId }));
+    if (result.accepted) this.database.acknowledgeProjects(local.mutationId, result.version);
+    this.database.applyPrivateProjects(result.projects, result.version);
   }
 
   localChanged(): void {
@@ -90,6 +163,8 @@ export class DockSync {
     this.changed();
     let hasMore = false;
     try {
+      await this.refreshProjects(credentials);
+      await this.refreshPrivateProjects(credentials);
       const pull = syncPullResultSchema.parse(await this.request(credentials.endpoint,
         `/sync?cursor=${this.database.syncCursor()}`, credentials.token));
       this.database.applySync(pull.changes, pull.cursor);
@@ -102,8 +177,9 @@ export class DockSync {
           this.database.applySync([push.current]);
         }
       }
+      this.features.error = "";
       this.lastSyncedAt = new Date().toISOString();
-      this.phase = this.database.syncCounts().pending || hasMore ? "pending" : "synced";
+      this.phase = this.database.syncCounts().pending || this.database.projectSyncState().dirty || hasMore ? "pending" : "synced";
     } catch (error) {
       const offline = error instanceof Error && ["TypeError", "TimeoutError", "AbortError"].includes(error.name);
       this.phase = offline ? "offline" : "error";
@@ -128,6 +204,8 @@ export class DockSync {
       signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
+      const detail = await response.json().catch(() => null) as { error?: unknown } | null;
+      if (typeof detail?.error === "string" && detail.error.length <= 500) throw new SyncRequestError(detail.error);
       const messages: Record<number, string> = {
         401: token ? "Your session expired or was revoked. Sign in again; local changes are safe." : "Email or password is incorrect.",
         403: "The invite code is incorrect.",
@@ -145,6 +223,7 @@ export class DockSync {
     clearTimeout(this.timer);
     const credentials = this.credentials;
     this.credentials = null;
+    this.features = syncFeaturesSchema.parse({});
     this.phase = "disconnected";
     this.error = "";
     this.changed();

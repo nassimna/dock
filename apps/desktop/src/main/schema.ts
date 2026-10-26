@@ -64,3 +64,17 @@ CREATE TRIGGER sync_item_updated
   END;
 PRAGMA user_version = 3;
 `;
+
+export const tasksSchema = `
+ALTER TABLE items ADD COLUMN task_properties TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE items ADD COLUMN completed_at TEXT;
+UPDATE items SET task_properties = '{"priority":1}' WHERE priority = 1;
+UPDATE items SET completed_at = updated_at WHERE done = 1;
+DROP TRIGGER sync_item_updated;
+CREATE TRIGGER sync_item_updated
+  AFTER UPDATE OF title, body, space, priority, done, scheduled_at, recurrence, linked_note_id, deleted_at, tags, note_style, task_properties, completed_at ON items
+  WHEN NOT EXISTS (SELECT 1 FROM sync_meta WHERE key = 'applying_remote') BEGIN
+    UPDATE sync_items SET dirty = 1, mutation_id = lower(hex(randomblob(16))) WHERE item_id = NEW.id;
+  END;
+PRAGMA user_version = 4;
+`;

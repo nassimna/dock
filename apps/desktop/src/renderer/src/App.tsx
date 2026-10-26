@@ -3,18 +3,28 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { themeStyle } from "@/lib/theme";
-import { useEffect, useRef, useState } from "react";
+import { floatingStyle, themeStyle } from "@/lib/theme";
+import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   CalendarDays,
-  Circle,
+  BarChart3,
+  Filter,
+  GripHorizontal,
+  Hash,
+  LayoutGrid,
+  List,
+  Pencil,
+  Trash2,
+  Copy,
   Check,
   FileText,
+  Flag,
   Inbox,
   ListFilter,
   ListTodo,
   Maximize2,
   Minus,
+  Minimize2,
   Moon,
   Pin,
   PinOff,
@@ -28,32 +38,46 @@ import {
 } from "lucide-react";
 import {
   localDate,
+  taskPropertiesSchema,
   type Item,
   type Snapshot,
+  type Project,
+  type TaskProperties,
   type WindowRole,
 } from "@dock/contracts";
 import { Capture } from "./Capture";
-import { ActionButton, Empty, Shortcut, TaskRow, todaySchedule } from "./components";
+import { ActionButton, Empty, RecognizedTokens, Shortcut, TaskRow, todaySchedule } from "./components";
 import { Notes } from "./Notes";
 import { Schedule } from "./Schedule";
 import { Settings } from "./Settings";
 import { TaskEditor } from "./TaskEditor";
+import { compileFilter, compareTasks, matchesSearch, parseTaskText } from "./lib/tasks";
+import { ProjectEditor, Filters, Templates, CommandMenu } from "./WorkspaceTools";
+import { ProjectBoard, Progress, RecentlyDeleted } from "./TaskViews";
+import { SharedProjectSettings } from "./SharedProjectSettings";
 import { UpdateNotice } from "./Updates";
 import { useDock, type Act } from "./state";
 
 type View =
-  "today" | "inbox" | "all" | "starred" | "notes" | "schedule" | "done" | "settings";
+  "today" | "inbox" | "all" | "starred" | "notes" | "schedule" | "done" | "settings" | "project" | "filters" | "filter" | "progress" | "trash";
 const navigation = [
   { id: "today", title: "Today", icon: Sun },
   { id: "inbox", title: "Inbox", icon: Inbox },
   { id: "all", title: "All tasks", icon: ListTodo },
-  { id: "starred", title: "Starred", icon: Star },
+  { id: "starred", title: "Priority", icon: Flag },
   { id: "notes", title: "Notes", icon: FileText },
-  { id: "schedule", title: "Schedule", icon: CalendarDays },
+  { id: "schedule", title: "Upcoming", icon: CalendarDays },
+  { id: "filters", title: "Filters & labels", icon: Filter },
+  { id: "progress", title: "Progress", icon: BarChart3 },
   { id: "done", title: "Done", icon: Check },
 ] as const;
 const role = (new URLSearchParams(location.search).get("window") ??
   "main") as WindowRole;
+/** Today shows tasks scheduled or due by a deadline on or before today. */
+const dueBy = (item: Item, day: string) =>
+  [item.scheduledAt, item.task.deadline].some(value => value && localDate(new Date(value)) <= day);
+const editableTarget = (target: EventTarget | null) =>
+  target instanceof HTMLElement && !!target.closest("input, textarea, select, [contenteditable='true'], [role='dialog'], [role='menu'], [role='listbox'], .task-panel");
 
 function Chrome({
   snapshot,
@@ -70,7 +94,7 @@ function Chrome({
     <header className="chrome">
       <div className="chrome-brand">
         {role === "capture" ? <Zap size="1rem" /> : <ListFilter size="1.1875rem" />}
-        <strong>{role === "capture" ? "Quick capture" : role === "mini" ? "Sticky window" : "Dock"}</strong>
+        <strong>{role === "capture" ? "Quick capture" : role === "mini" ? "Sticky window" : snapshot.system.name}</strong>
         {role === "capture" && <Shortcut value={snapshot.settings.shortcut} />}
       </div>
       <div className="chrome-tools">
@@ -108,8 +132,8 @@ function Chrome({
         {role === "main" && (
           <>
             <ActionButton className={`${snapshot.system.miniOpen ? "active" : ""}`}
-              aria-label="Open mini window"
-              onClick={() => act({ type: "window", action: "mini" })}
+              aria-label="Show floating tasks icon"
+              onClick={() => act({ type: "window", action: "floating" })}
             >
               <Pin size="1.0625rem" />
             </ActionButton>
@@ -168,29 +192,98 @@ function Chrome({
 export function App() {
   const { snapshot, dispatch, act, error, clearError } = useDock();
   const [view, setView] = useState<View>("today");
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [filterId, setFilterId] = useState<string | null>(null);
+  const [projectEditor, setProjectEditor] = useState<Project | null | undefined>();
+  const [projectLayouts, setProjectLayouts] = useState<Record<string, "list" | "board">>({});
+  const layout = projectId ? projectLayouts[projectId] ?? "list" : "list";
+  const [navigationReady, setNavigationReady] = useState(false);
+  const lastTaskNavigation = useRef({ view: "today" as View, projectId: null as string | null, filterId: null as string | null, projectLayouts: {} as Record<string, "list" | "board"> });
+  const [stickyFilter, setStickyFilter] = useState<"today" | "starred" | "all">(() => {
+    const saved = localStorage.getItem("dock.sticky-filter");
+    return saved === "today" || saved === "starred" ? saved : "all";
+  });
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [commandsOpen, setCommandsOpen] = useState(false);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [newTaskOptions, setNewTaskOptions] = useState<Partial<TaskProperties>>({});
+  const [newScheduledAt, setNewScheduledAt] = useState<string | undefined>();
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [space, setSpace] = useState("all");
   const [editing, setEditing] = useState<Item | null | undefined>(undefined);
-  const [feedback, setFeedback] = useState<{ type: "deleted" | "completed"; item: Item } | null>(null);
+  /** Another task waiting to open while the side panel has unsaved changes. */
+  const [switchTo, setSwitchTo] = useState<{ next: Item | null } | null>(null);
+  const editorDirty = useRef(false);
+  const [feedback, setFeedback] = useState<{ token: string; action: "delete" | "complete"; count: number; title?: string } | null>(null);
+  const [edited, setEdited] = useState<{ message: string; title: string; revert: () => Promise<unknown> } | null>(null);
+  const [ignored, setIgnored] = useState<string[]>([]);
+  const latest = useRef(snapshot);
+  latest.current = snapshot;
   const [undoing, setUndoing] = useState(false);
   const [completions, setCompletions] = useState<Record<string, { item: Item; phase: "saving" | "complete" }>>({});
   const completionTimers = useRef(new Map<string, number>());
   const [captureTitle, setCaptureTitle] = useState("");
+  const [captureError, setCaptureError] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [clock, setClock] = useState(Date.now());
   const search = useRef<HTMLInputElement>(null);
   const main = useRef<HTMLElement>(null);
+  const floatingDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
+  const floatingDragged = useRef(false);
+  useEffect(() => window.dock.onNavigate(destination => {
+    if (role !== "main") return;
+    setQuery(""); setSearchOpen(false); setView(destination);
+    if (destination === "settings") main.current?.scrollTo({ top: 0 });
+  }), []);
+  useEffect(() => window.dock.onOpenTask(id => {
+    const item = latest.current?.items.find(item => item.id === id);
+    if (role === "main" && item) openEditor(item);
+  }), []);
+  useEffect(() => {
+    if (role === "mini") localStorage.setItem("dock.sticky-filter", stickyFilter);
+  }, [stickyFilter]);
+  useEffect(() => {
+    if (!snapshot || role !== "main" || navigationReady) return;
+    if (snapshot.settings.rememberLastView) {
+      try {
+        const saved = JSON.parse(localStorage.getItem("dock.main-navigation") ?? "null");
+        const views: View[] = ["today", "inbox", "all", "starred", "notes", "schedule", "done", "project", "filters", "filter", "progress", "trash"];
+        if (saved && views.includes(saved.view) &&
+            (saved.view !== "project" || snapshot.workspace.projects.some(project => project.id === saved.projectId)) &&
+            (saved.view !== "filter" || snapshot.workspace.filters.some(filter => filter.id === saved.filterId))) {
+          setView(saved.view);
+          setProjectId(typeof saved.projectId === "string" ? saved.projectId : null);
+          setFilterId(typeof saved.filterId === "string" ? saved.filterId : null);
+          if (saved.projectLayouts && typeof saved.projectLayouts === "object") {
+            setProjectLayouts(Object.fromEntries(snapshot.workspace.projects.filter(project => ["list", "board"].includes(saved.projectLayouts[project.id])).map(project => [project.id, saved.projectLayouts[project.id]])));
+          }
+        }
+      } catch { localStorage.removeItem("dock.main-navigation"); }
+    }
+    setNavigationReady(true);
+  }, [snapshot, navigationReady]);
+  useEffect(() => {
+    if (role !== "main" || !navigationReady || !snapshot) return;
+    if (view !== "settings") lastTaskNavigation.current = { view, projectId, filterId, projectLayouts };
+    if (!snapshot.settings.rememberLastView) localStorage.removeItem("dock.main-navigation");
+    else localStorage.setItem("dock.main-navigation", JSON.stringify(lastTaskNavigation.current));
+  }, [navigationReady, snapshot?.settings.rememberLastView, view, projectId, filterId, projectLayouts]);
+  useEffect(() => {
+    if (feedback && snapshot?.undo?.token !== feedback.token) setFeedback(null);
+  }, [snapshot?.undo?.token, feedback]);
   useEffect(() => window.dock.onBeforeUpdate(async () => {
-    if (editing !== undefined || captureTitle.trim())
+    if (editing !== undefined || projectEditor !== undefined || templatesOpen || captureTitle.trim())
       throw new Error("Finish or close your task draft before restarting Dock.");
-  }), [editing, captureTitle]);
+  }), [editing, projectEditor, templatesOpen, captureTitle]);
   useEffect(() => () => {
     completionTimers.current.forEach(timer => window.clearTimeout(timer));
   }, []);
   useEffect(() => {
     main.current?.scrollTo({ top: 0 });
-  }, [view, space]);
+    setSelected([]); setBulkMode(false); setNewTaskOptions({});
+  }, [view, projectId, filterId]);
   useEffect(() => {
     document.documentElement.dataset.theme = snapshot?.settings.theme ?? "dark";
     document.documentElement.dataset.uiPreset = snapshot?.settings.uiPreset ?? "ink";
@@ -217,30 +310,54 @@ export function App() {
       if (
         (event.ctrlKey || event.metaKey) &&
         event.key.toLowerCase() === "k" &&
-        role === "main" &&
-        editing === undefined
+        role === "main"
       ) {
         event.preventDefault();
-        setSearchOpen(true);
-        if (view === "schedule" || view === "settings") setView("all");
+        setCommandsOpen(true);
       }
       if (event.key === "Escape" && editing === undefined) {
         if (role === "capture") act({ type: "window", action: "hide" });
+        else if (role === "mini" || role === "floating") act({ type: "window", action: "floating" });
         else {
           setSearchOpen(false);
           setQuery("");
         }
       }
+      if (event.key === "Escape" || role !== "main" && role !== "mini" || editableTarget(event.target) || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if ((event.metaKey || event.ctrlKey) && key === "z" && !event.shiftKey && (edited || feedback)) {
+        event.preventDefault();
+        void (edited ? revertEdit() : undoFeedback());
+        return;
+      }
+      if (event.metaKey || event.ctrlKey) return;
+      const taskButtons = [...document.querySelectorAll<HTMLButtonElement>(".task-row .task-open")];
+      const current = taskButtons.findIndex(button => button.contains(document.activeElement));
+      if (["j", "k", "arrowdown", "arrowup"].includes(key) && (current >= 0 || document.activeElement === document.body)) {
+        event.preventDefault();
+        taskButtons[Math.max(0, Math.min(taskButtons.length - 1, current + (key === "j" || key === "arrowdown" ? 1 : current < 0 ? taskButtons.length : -1)))]?.focus();
+      } else if (key === "e" && current >= 0) {
+        const item = latest.current?.items.find(item => item.id === taskButtons[current]!.closest<HTMLElement>(".task-row")?.dataset.taskId);
+        if (item) { event.preventDefault(); void toggleTask(item); }
+      } else if (key === "q" && role === "main") {
+        event.preventDefault();
+        beginTask();
+      } else if (key === "/" && role === "main") {
+        event.preventDefault();
+        setSearchOpen(true);
+        if (view === "schedule" || view === "settings") setView("all");
+        search.current?.focus();
+      }
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [act, editing, view]);
+  });
 
   async function remove(item: Item) {
     try {
-      await dispatch({ type: "item.delete", id: item.id });
+      const result = await dispatch({ type: "item.delete", id: item.id });
       setEditing(undefined);
-      setFeedback({ type: "deleted", item });
+      if (result.undo) { setEdited(null); setFeedback({ ...result.undo, title: item.title }); }
     } catch {
       /* The shared error banner reports the failure. */
     }
@@ -258,29 +375,44 @@ export function App() {
     if (completions[item.id]) return;
     setCompletions(current => ({ ...current, [item.id]: { item, phase: "saving" } }));
     try {
-      await dispatch({ type: item.done ? "item.toggle" : "item.complete", id: item.id });
+      const result = await dispatch({ type: item.done ? "item.toggle" : "item.complete", id: item.id });
       if (item.done) {
         clearCompletion(item.id);
-        setFeedback(current => current?.type === "completed" && current.item.id === item.id ? null : current);
+        setFeedback(null);
       } else {
         setCompletions(current => ({ ...current, [item.id]: { item, phase: "complete" } }));
-        setFeedback({ type: "completed", item });
+        if (result.undo) { setEdited(null); setFeedback({ ...result.undo, title: item.title }); }
         completionTimers.current.set(item.id, window.setTimeout(() => clearCompletion(item.id), 900));
       }
     } catch {
       clearCompletion(item.id);
     }
   }
+  async function quickEdit(item: Item, changes: Partial<Item>, message: string) {
+    try {
+      const result = await dispatch({ type: "item.save", item: { ...item, ...changes, expectedRevision: item.revision } });
+      const revision = result.items.find(saved => saved.id === item.id)?.revision;
+      setFeedback(null);
+      setEdited({ message, title: item.title, revert: () => dispatch({ type: "item.save", item: { ...item, expectedRevision: revision } }) });
+    } catch {
+      /* The shared error banner reports the failure. */
+    }
+  }
+  async function revertEdit() {
+    if (!edited || undoing) return;
+    setUndoing(true);
+    try { await edited.revert(); setEdited(null); }
+    catch { /* The shared error banner reports the failure. */ }
+    finally { setUndoing(false); }
+  }
   async function undoFeedback() {
     if (!feedback || undoing) return;
     setUndoing(true);
     try {
-      if (feedback.type === "deleted") {
-        await dispatch({ type: "item.restore", id: feedback.item.id });
-      } else if (snapshot?.items.find(item => item.id === feedback.item.id)?.done) {
-        await dispatch({ type: "item.toggle", id: feedback.item.id });
-        clearCompletion(feedback.item.id);
-      }
+      await dispatch({ type: "item.undo", token: feedback.token });
+      completionTimers.current.forEach(timer => window.clearTimeout(timer));
+      completionTimers.current.clear();
+      setCompletions({});
       setFeedback(current => current === feedback ? null : current);
     } catch {
       /* The shared error banner reports the failure; Undo remains available. */
@@ -289,7 +421,7 @@ export function App() {
     }
   }
   if (!snapshot)
-    return (
+    return role === "floating" ? null : (
       <div className="startup">
         <ListFilter size="1.75rem" />
         <h1>Dock</h1>
@@ -304,31 +436,77 @@ export function App() {
         )}
       </div>
     );
+  if (role === "floating") {
+    const count = snapshot.items.filter(item => item.kind === "task" && !item.done).length;
+    const style = snapshot.settings.floating;
+    function pointerDown(event: ReactPointerEvent<HTMLButtonElement>) {
+      floatingDragged.current = false;
+      if (event.button !== 0) return;
+      floatingDrag.current = { x: event.screenX - window.screenX, y: event.screenY - window.screenY, startX: event.screenX, startY: event.screenY };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    function pointerMove(event: ReactPointerEvent<HTMLButtonElement>) {
+      const drag = floatingDrag.current;
+      if (!drag) return;
+      if (Math.hypot(event.screenX - drag.startX, event.screenY - drag.startY) > 4) floatingDragged.current = true;
+      if (floatingDragged.current && !style.locked) window.dock.moveFloating(event.screenX - drag.x, event.screenY - drag.y);
+    }
+    function moveKey(event: ReactKeyboardEvent<HTMLButtonElement>) {
+      const offsets: Record<string, [number, number]> = { ArrowLeft: [-16, 0], ArrowRight: [16, 0], ArrowUp: [0, -16], ArrowDown: [0, 16] };
+      const offset = offsets[event.key];
+      if (!offset || style.locked) return;
+      event.preventDefault();
+      window.dock.moveFloating(window.screenX + offset[0], window.screenY + offset[1]);
+    }
+    const moveHandlers = { onPointerDown: pointerDown, onPointerMove: pointerMove,
+      onLostPointerCapture: () => { floatingDrag.current = null; }, onPointerCancel: () => { floatingDragged.current = false; }, onKeyDown: moveKey };
+    return <div className="floating-launcher" style={floatingStyle(style)}>
+      {style.showHandle && <Button className="floating-handle" aria-label="Move floating icon" disabled={style.locked}
+        title="Drag to move · Arrow keys when focused" {...moveHandlers}><GripHorizontal size={18} /></Button>}
+      <Button autoFocus className="floating-button" aria-label={`${snapshot.system.miniOpen ? 'Hide' : 'Show'} tasks (${count} active)`}
+        aria-expanded={snapshot.system.miniOpen} {...moveHandlers}
+        title={style.locked ? "Click to toggle tasks · Position locked · Right-click to customize" : "Click to toggle tasks · Drag to move · Right-click to customize"}
+        onClick={() => {
+          if (floatingDragged.current) { floatingDragged.current = false; return; }
+          act({ type: "window", action: snapshot.system.miniOpen ? "floating" : "mini" });
+        }}>
+        <ListFilter size={30} />
+        {style.showCount && <span className="floating-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
+      </Button>
+    </div>;
+  }
   const today = localDate(new Date(clock));
   const displayItems = snapshot.items.map(item => completions[item.id]?.item ?? item);
+  const project = snapshot.workspace.projects.find(project => project.id === projectId);
+  const savedFilter = snapshot.workspace.filters.find(filter => filter.id === filterId);
+  let filterPredicate = (_item: Item) => true, filterFailure = '';
+  if (view === 'filter' && savedFilter) {
+    try { filterPredicate = compileFilter(savedFilter.query, snapshot.workspace, new Date(clock)); }
+    catch (error) { filterFailure = error instanceof Error ? error.message : 'Invalid filter.'; filterPredicate = () => false; }
+  }
   const tasks = displayItems.filter(
-    (item) =>
-      item.kind === "task" &&
-      (space === "all" || item.space === space) &&
-      `${item.title} ${item.body}`.toLowerCase().includes(query.toLowerCase()),
+    (item) => item.kind === "task" && (!query || matchesSearch(item, query, snapshot.workspace)),
   );
+  const stickyTasks = tasks.filter(item => !item.done &&
+    (stickyFilter === "today" ? dueBy(item, today) :
+      stickyFilter === "starred" ? item.task.priority < 4 : true)).sort((a, b) => compareTasks(a, b, today));
   const visible = tasks
     .filter((item) => {
       if (view === "done") return item.done;
+      if (view === "filter") return filterPredicate(item);
       if (item.done) return false;
       if (query) return true;
-      if (view === "today")
-        return (
-          item.scheduledAt && localDate(new Date(item.scheduledAt)) <= today
-        );
-      if (view === "inbox") return item.space === "Inbox";
-      if (view === "starred") return item.priority;
+      if (view === "today") return dueBy(item, today);
+      if (view === "inbox") return !item.task.projectId;
+      if (view === "starred") return item.task.priority < 4;
+      if (view === "project") return item.task.projectId === projectId && !item.task.parentId;
       return true;
     })
     .sort(
-      (a, b) =>
-        Number(b.priority) - Number(a.priority) ||
-        (a.scheduledAt ?? "z").localeCompare(b.scheduledAt ?? "z"),
+      (a, b) => view === "done"
+        ? (b.completedAt ?? b.updatedAt).localeCompare(a.completedAt ?? a.updatedAt)
+        : view === "project" ? a.task.order - b.task.order || compareTasks(a, b, today)
+        : compareTasks(a, b, today),
     );
   const overdue = visible.filter(
     (item) =>
@@ -338,44 +516,99 @@ export function App() {
   );
   const remaining = visible.filter((item) => !overdue.includes(item));
   const defaults = {
-    space: view === "inbox" || space === "all" ? "Inbox" as const : space as Item["space"],
+    space: "Inbox" as const,
     scheduledAt: view === "today" ? todaySchedule() : null,
     priority: view === "starred",
+    task: { projectId: view === "project" ? projectId : null, ...newTaskOptions },
   };
   async function captureTask(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!captureTitle.trim()) return;
-    setCapturing(true);
+    setCapturing(true); setCaptureError("");
     try {
+      const parsed = parseTaskText(captureTitle, snapshot!.workspace, new Date(), ignored);
       await dispatch({ type: "item.save", item: {
-        kind: "task", title: captureTitle, body: "", ...defaults,
-        recurrence: "none", linkedNoteId: null,
+        kind: "task", title: parsed.title, body: "", ...defaults, task: taskPropertiesSchema.parse({ ...defaults.task, ...parsed.task }), tags: parsed.tags,
+        scheduledAt: parsed.scheduledAt ?? defaults.scheduledAt,
+        recurrence: parsed.recurrence, linkedNoteId: null,
       } });
-      setCaptureTitle("");
-    } catch {
-      /* The shared error banner reports the failure and the draft stays here. */
+      setCaptureTitle(""); setIgnored([]);
+    } catch (error) {
+      setCaptureError(error instanceof Error ? error.message : 'Could not add the task.');
     } finally { setCapturing(false); }
   }
   const title =
     view === "settings"
       ? "Preferences"
-      : navigation.find((item) => item.id === view)!.title;
-  const rows = (items: Item[]) =>
-    items.map((item) => (
+      : view === "project" ? project?.name ?? 'Project'
+      : view === "filter" ? savedFilter?.name ?? 'Saved filter'
+      : view === "trash" ? 'Recently deleted'
+      : navigation.find((item) => item.id === view)?.title ?? 'Dock';
+  function navigate(destination: View) {
+    setQuery(""); setSearchOpen(false); setView(destination);
+  }
+  function setLayout(next: "list" | "board") {
+    if (projectId) setProjectLayouts(current => ({ ...current, [projectId]: next }));
+  }
+  function openProject(id: string) { setProjectId(id); setQuery(''); setView('project'); }
+  function openFilter(id: string) { setFilterId(id); setQuery(''); setView('filter'); }
+  function openEditor(next: Item | null) {
+    if (editing !== undefined && editorDirty.current && next?.id !== editing?.id) setSwitchTo({ next });
+    else setEditing(next);
+  }
+  function beginTask(sectionId: string | null = null, scheduledAt?: string) { setNewTaskOptions({ sectionId }); setNewScheduledAt(scheduledAt); openEditor(null); }
+  async function bulk(action: 'complete' | 'delete' | 'update', patch?: { task?: Partial<TaskProperties>; scheduledAt?: string | null; space?: Item['space'] }) {
+    setBulkBusy(true);
+    try {
+      const result = await dispatch({ type: 'item.bulk', ids: selected, action, patch, expectedRevisions: Object.fromEntries(snapshot!.items.filter(item => selected.includes(item.id)).map(item => [item.id, item.revision])) });
+      if (action !== 'update' && result.undo) setFeedback(result.undo);
+      setSelected([]);
+    }
+    catch { /* The shared error banner reports the failure. */ }
+    finally { setBulkBusy(false); }
+  }
+  const projectTree = (parentId: string | null, depth = 0): React.ReactNode => snapshot.workspace.projects.filter(project => project.parentId === parentId).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name)).map(project => <div key={project.id}>
+    <ActionButton aria-label={`Project ${project.name}`} size="nav" className={`nav-button ${view === 'project' && projectId === project.id ? 'active' : ''}`} style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }} onClick={() => openProject(project.id)}><Hash size="1rem" style={{ color: project.color }} /><span className="nav-label">{project.name}</span>{project.favorite && <Star size="0.6875rem" />}<small>{snapshot.items.filter(item => item.kind === 'task' && !item.done && item.task.projectId === project.id).length || ''}</small></ActionButton>
+    {projectTree(project.id, depth + 1)}
+  </div>);
+  /** `tree` lists open subtasks under their parents; `nested` marks those subtask rows. */
+  const rows = (items: Item[], tree = false, nested = false): React.ReactNode =>
+    items.map((item) => <Fragment key={item.id}>
       <TaskRow
-        key={item.id}
         item={item}
         snapshot={snapshot}
-        act={act}
-        onOpen={setEditing}
+        onChange={(item, changes, message) => void quickEdit(item, changes, message)}
+        nested={nested}
+        onOpen={openEditor}
+        onDelete={item => void remove(item)}
         onToggle={item => void toggleTask(item)}
         completion={completions[item.id]?.phase}
+        selected={bulkMode ? selected.includes(item.id) : undefined}
+        onSelect={() => setSelected(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])}
       />
-    ));
+      {tree && rows(displayItems.filter(child => child.task.parentId === item.id && !child.done)
+        .sort((a, b) => a.task.order - b.task.order || compareTasks(a, b, today)), true, true)}
+    </Fragment>);
 
+  const editor = editing !== undefined && (
+    <TaskEditor
+      key={editing?.id ?? "new"}
+      item={editing}
+      panel={role === "main"}
+      defaults={{ ...defaults, scheduledAt: newScheduledAt ?? defaults.scheduledAt }}
+      onOpen={setEditing}
+      snapshot={snapshot}
+      dispatch={dispatch}
+      onDirty={dirty => { editorDirty.current = dirty; }}
+      switching={!!switchTo}
+      onKeep={() => setSwitchTo(null)}
+      onClose={() => { editorDirty.current = false; setEditing(switchTo ? switchTo.next : undefined); setSwitchTo(null); }}
+      onDelete={(item) => void remove(item)}
+    />
+  );
   return (
     <div
-      className={`app-shell ${role} ${snapshot.system.platform === "darwin" ? "mac" : ""}`}
+      className={`app-shell parity ${role} ${snapshot.system.platform === "darwin" ? "mac" : ""}`}
       inert={snapshot.update.status === "installing"}
     >
       <Chrome
@@ -398,7 +631,7 @@ export function App() {
         </div>
       )}
       {role === "capture" ? (
-        <Capture dispatch={dispatch} act={act} />
+        <Capture snapshot={snapshot} dispatch={dispatch} act={act} />
       ) : role === "mini" ? (
         <>
           <div className="mini-body">
@@ -414,6 +647,9 @@ export function App() {
               </div>
               <div className="heading-tools">
               <UpdateNotice update={snapshot.update} version={snapshot.system.version} act={act} />
+              <ActionButton aria-label="Collapse to floating icon" onClick={() => act({ type: "window", action: "floating" })}>
+                <Minimize2 size="1rem" />
+              </ActionButton>
               <ActionButton
                 aria-label="Open main app"
                 onClick={() => act({ type: "window", action: "main" })}
@@ -422,11 +658,18 @@ export function App() {
               </ActionButton>
               </div>
             </div>
-            {tasks.filter((item) => !item.done).slice(0, 6).length ? (
-              rows(tasks.filter((item) => !item.done).slice(0, 6))
+            <div className="sticky-toolbar">
+              <Select value={stickyFilter} onValueChange={value => setStickyFilter(value as "today" | "starred" | "all")}>
+                <SelectTrigger size="xs" aria-label="Sticky task filter"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="all">All tasks</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="starred">Priority</SelectItem></SelectContent>
+              </Select>
+              <Button size="xs" variant="ghost" onClick={() => act({ type: "window", action: "main", view: stickyFilter })}>View all ({stickyTasks.length})</Button>
+            </div>
+            {stickyTasks.length ? (
+              rows(stickyTasks.slice(0, 6))
             ) : (
               <Empty title="Nothing to lose track of">
-                Capture something to keep it nearby.
+                {stickyFilter === "all" ? "Capture something to keep it nearby." : "Choose All tasks to see other work."}
               </Empty>
             )}
           </div>
@@ -439,7 +682,7 @@ export function App() {
         </>
       ) : (
         <>
-          <div className="workspace">
+          <div className={`workspace ${editing !== undefined ? "with-panel" : ""}`}>
           <aside className="sidebar">
             <div className="sidebar-sections">
             <div className="sidebar-label">Workspace</div>
@@ -447,38 +690,31 @@ export function App() {
               {navigation.map(({ id, title, icon: Icon }) => {
                 const count = snapshot.items.filter(item => item.kind === "task" &&
                   (id === "done" ? item.done : !item.done) &&
-                  (id === "today" ? item.scheduledAt && localDate(new Date(item.scheduledAt)) <= today :
-                   id === "inbox" ? item.space === "Inbox" : id === "starred" ? item.priority : true)).length;
+                  (id === "today" ? dueBy(item, today) :
+                   id === "inbox" ? !item.task.projectId : id === "starred" ? item.task.priority < 4 : true)).length;
                 return (
-                  <ActionButton aria-label={title} size="nav" key={id} className={`nav-button ${view === id && (view !== "all" || space === "all") ? "active" : ""}`}
-                    aria-current={view === id && (view !== "all" || space === "all") ? "page" : undefined}
-                    onClick={() => { setView(id); setSpace("all"); }}>
+                  <ActionButton aria-label={title} size="nav" key={id} className={`nav-button ${view === id ? "active" : ""}`}
+                    aria-current={view === id ? "page" : undefined}
+                    onClick={() => navigate(id)}>
                     <Icon size="1rem" /><span className="nav-label">{title}</span>
-                    {!["notes", "schedule"].includes(id) && count > 0 && <Badge variant="secondary" className="nav-count">{count}</Badge>}
+                    {!["notes", "schedule", "filters", "progress"].includes(id) && count > 0 && <Badge variant="secondary" className="nav-count">{count}</Badge>}
                   </ActionButton>
                 );
               })}
             </nav>
             <Separator className="my-2" />
-            <div className="sidebar-label">Spaces</div>
-            <nav className="space-navigation" aria-label="Spaces">
-              {(["Work", "Personal"] as const).map(name => (
-                <ActionButton aria-label={name} size="nav" key={name} className={`nav-button ${view === "all" && space === name ? "active" : ""}`}
-                  aria-current={view === "all" && space === name ? "page" : undefined}
-                  onClick={() => { setSpace(name); setView("all"); }}>
-                  <Circle size="0.625rem" /><span className="space-initial" aria-hidden="true">{name[0]}</span><span className="nav-label">{name}</span>
-                  <small>{snapshot.items.filter(item => item.kind === "task" && !item.done && item.space === name).length || ""}</small>
-                </ActionButton>
-              ))}
-            </nav>
+            <div className="sidebar-project-heading"><div className="sidebar-label">Projects</div><ActionButton aria-label="New project" size="icon-xs" onClick={() => setProjectEditor(null)}><Plus size="0.875rem" /></ActionButton></div>
+            <nav className="project-navigation" aria-label="Projects">{projectTree(null)}</nav>
+            {snapshot.workspace.filters.some(filter => filter.favorite) && <><div className="sidebar-label">Favorite filters</div><nav aria-label="Favorite filters">{snapshot.workspace.filters.filter(filter => filter.favorite).map(filter => <ActionButton key={filter.id} aria-label={`Filter ${filter.name}`} size="nav" className={`nav-button ${view === 'filter' && filterId === filter.id ? 'active' : ''}`} onClick={() => openFilter(filter.id)}><Filter size="0.9375rem" /><span className="nav-label">{filter.name}</span></ActionButton>)}</nav></>}
             </div>
             <div className="sidebar-bottom">
+              <ActionButton aria-label="Recently deleted" size="nav" className={`nav-button ${view === 'trash' ? 'active' : ''}`} onClick={() => navigate("trash")}><Trash2 size="1rem" /><span className="nav-label">Recently deleted</span></ActionButton>
               <ActionButton aria-label="Quick capture" size="nav" className="nav-button" onClick={() => act({ type: "window", action: "capture" })}>
                 <Zap size="1rem" /><span className="nav-label">Quick capture</span>
               </ActionButton>
               <ActionButton aria-label="Preferences" size="nav" className={`nav-button ${view === "settings" ? "active" : ""}`}
                 aria-current={view === "settings" ? "page" : undefined}
-                onClick={() => setView("settings")}>
+                onClick={() => navigate("settings")}>
                 <Settings2 size="1rem" /><span className="nav-label">Preferences</span>
               </ActionButton>
             </div>
@@ -507,27 +743,21 @@ export function App() {
                           : ""}
                 </p>
               </div>
-              {!["settings", "notes", "schedule", "done"].includes(view) && (
+              {!["settings", "notes", "schedule", "done", "filters", "progress", "trash"].includes(view) && (
                 <div className="heading-tools">
-                  <Select value={space} onValueChange={setSpace}>
-                    <SelectTrigger aria-label="Filter by space"><SelectValue /></SelectTrigger>
-                    <SelectContent position="popper">
-                      <SelectItem value="all">All spaces</SelectItem>
-                      <SelectItem value="Inbox">Inbox</SelectItem>
-                      <SelectItem value="Work">Work</SelectItem>
-                      <SelectItem value="Personal">Personal</SelectItem>
-                    </SelectContent>
-                  </Select>
                   <Button variant="default"
 
                     aria-label="New task"
-                    onClick={() => setEditing(null)}
+                    onClick={() => beginTask()}
                   >
                     <Plus size="1rem" /> New task
                   </Button>
                 </div>
               )}
             </div>}
+            {view === 'project' && project && <div className="project-toolbar"><div className="view-switch"><Button size="xs" variant={layout === 'list' ? 'secondary' : 'ghost'} onClick={() => setLayout('list')}><List size="0.8125rem" />List</Button><Button size="xs" variant={layout === 'board' ? 'secondary' : 'ghost'} onClick={() => setLayout('board')}><LayoutGrid size="0.8125rem" />Board</Button></div><Button size="xs" variant="ghost" disabled={snapshot.syncFeatures.projects.some(shared => shared.id === project.id && shared.ownerEmail !== snapshot.sync.email)} onClick={() => setProjectEditor(project)}><Pencil size="0.8125rem" />Edit project</Button><Button size="xs" variant="ghost" onClick={() => setTemplatesOpen(true)}><Copy size="0.8125rem" />Templates</Button><SharedProjectSettings project={project} snapshot={snapshot} dispatch={dispatch} /></div>}
+            {view === 'filter' && savedFilter && <p className="filter-description">{savedFilter.query}</p>}
+            {filterFailure && <p role="alert" className="note-error">{filterFailure}</p>}
             {searchOpen && view !== "settings" && (
               <div className="search">
                 <Search size="1.0625rem" />
@@ -554,12 +784,18 @@ export function App() {
                 snapshot={snapshot}
                 query={query}
                 dispatch={dispatch}
-                onTask={setEditing}
+                onTask={openEditor}
                 onDelete={(item) => void remove(item)}
               />
             </div>
             {view === "schedule" ? (
-              <Schedule items={displayItems} renderTasks={rows} />
+              <Schedule items={displayItems} renderTasks={rows} snapshot={snapshot} dispatch={dispatch} onOpen={openEditor} onAdd={scheduledAt => beginTask(null, scheduledAt)} />
+            ) : view === 'filters' ? (
+              <Filters snapshot={snapshot} dispatch={dispatch} renderTasks={rows} onFilter={openFilter} />
+            ) : view === 'progress' ? (
+              <Progress snapshot={snapshot} dispatch={dispatch} renderTasks={rows} />
+            ) : view === 'trash' ? (
+              <RecentlyDeleted snapshot={snapshot} dispatch={dispatch} />
             ) : view === "settings" ? (
               <Settings snapshot={snapshot} dispatch={dispatch} act={act} />
             ) : (
@@ -568,11 +804,16 @@ export function App() {
                   {view !== "done" && !query && (
                     <form className="quick-add" onSubmit={event => void captureTask(event)}>
                       <Plus size="1rem" />
-                      <Input size="xs" aria-label="Quick add task" placeholder={view === "today" ? "Add a task for today…" : "Add a task…"}
+                      <Input size="xs" aria-label="Quick add task" placeholder="Add a task… try next Tue 9am p2 @work"
                         value={captureTitle} onChange={event => setCaptureTitle(event.target.value)} required maxLength={500} disabled={capturing} />
                       <Button size="xs" variant="outline" type="submit" disabled={capturing || !captureTitle.trim()}>{capturing ? "Saving…" : "Add"}</Button>
                     </form>
                   )}
+                  {captureError && <p role="alert" className="note-error">{captureError}</p>}
+                  {captureTitle && (() => { try { return <RecognizedTokens tokens={parseTaskText(captureTitle, snapshot.workspace, new Date(), ignored).recognized} onKeep={token => setIgnored(current => [...current, token.toLowerCase()])} />; } catch { return null; } })()}
+                  {!(view === 'project' && layout === 'board') && <div className="list-toolbar"><span className="muted">{visible.length} {visible.length === 1 ? 'task' : 'tasks'}</span><Button variant="ghost" size="xs" onClick={() => { setBulkMode(!bulkMode); setSelected([]); }}>{bulkMode ? 'Done selecting' : 'Select tasks'}</Button>{bulkMode && <Button size="xs" variant="ghost" onClick={() => setSelected(visible.map(item => item.id))}>Select all</Button>}{view !== 'project' && <Button variant="ghost" size="xs" onClick={() => setTemplatesOpen(true)}>Templates</Button>}</div>}
+                  {!!selected.length && <div className="bulk-actions" aria-label="Bulk actions"><strong>{selected.length} selected</strong><Button size="xs" variant="outline" disabled={bulkBusy} onClick={() => void bulk('complete')}>Complete</Button><Select value="priority" onValueChange={value => void bulk('update', { task: { priority: Number(value) as TaskProperties['priority'] } })}><SelectTrigger size="xs" aria-label="Bulk priority" disabled={bulkBusy}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="priority" disabled>Priority</SelectItem>{[1,2,3,4].map(priority => <SelectItem key={priority} value={String(priority)}>P{priority}</SelectItem>)}</SelectContent></Select><Select value="project" onValueChange={value => void bulk('update', { task: { projectId: value === 'none' ? null : value, sectionId: null } })}><SelectTrigger size="xs" aria-label="Bulk project" disabled={bulkBusy}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="project" disabled>Move to project</SelectItem><SelectItem value="none">No project</SelectItem>{snapshot.workspace.projects.map(project => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select><Button size="xs" variant="outline" disabled={bulkBusy} onClick={() => void bulk('update', { scheduledAt: todaySchedule() })}>Today</Button><Button size="xs" variant="ghost" className="danger" disabled={bulkBusy} onClick={() => void bulk('delete')}>Delete</Button></div>}
+                  {view === 'project' && project && layout === 'board' ? <ProjectBoard project={project} items={visible} snapshot={snapshot} dispatch={dispatch} onOpen={openEditor} onAdd={beginTask} onToggle={item => void toggleTask(item)} /> : view === 'project' && project ? <div className="project-list">{[{ id: null, name: 'No section' }, ...project.sections].map(section => <section key={section.id ?? 'none'}><div className="group-label"><span>{section.name}</span><span>{visible.filter(item => item.task.sectionId === section.id).length}</span><ActionButton aria-label={`Add task in ${section.name}`} size="icon-xs" onClick={() => beginTask(section.id)}><Plus size="0.875rem" /></ActionButton></div>{rows(visible.filter(item => item.task.sectionId === section.id), true)}</section>)}</div> : <>
                   {!!overdue.length && (
                     <>
                       <div className="group-label overdue">
@@ -610,17 +851,18 @@ export function App() {
                       }
                     >
                       {query
-                        ? "Try another search or space."
+                        ? "Try another search."
                         : view === "today"
                           ? "Schedule a task for today, or capture something for later."
                           : "Use quick capture to add a task or note."}
                     </Empty>
                   )}
-
+                  </>}
                 </>
               )
             )}
           </main>
+          {editor}
           </div>
           <footer className="foot">
             <span>
@@ -628,7 +870,7 @@ export function App() {
               {snapshot.system.platform === "darwin" ? "Mac" : "computer"} · Works
               offline
               {snapshot.sync.connected && (
-                <Button variant="ghost" className="sync-status" onClick={() => setView("settings")}>
+                <Button variant="ghost" className="sync-status" onClick={() => navigate("settings")}>
                   · {snapshot.sync.conflicts ? "Review conflicts" : snapshot.sync.phase === "synced" ? "Synced" :
                     snapshot.sync.phase === "syncing" ? "Syncing…" : snapshot.sync.phase === "offline" ? "Offline" :
                     snapshot.sync.phase === "error" ? "Sync needs attention" : "Sync pending"}
@@ -642,12 +884,10 @@ export function App() {
         </>
       )}
       {feedback && (
-        <div key={`${feedback.type}-${feedback.item.id}`}
-          className={`undo-toast ${feedback.type === "completed" ? "completion-toast" : ""}`} role="status">
-          {feedback.type === "completed" ? <>
-            <Check className="completion-check" size="1.125rem" aria-hidden="true" />
-            <span className="completion-message"><strong>Task completed</strong><span>{feedback.item.title}</span></span>
-          </> : <span>{feedback.item.kind === "task" ? "Task" : "Note"} deleted</span>}
+        <div key={feedback.token}
+          className={`undo-toast ${feedback.action === "complete" ? "completion-toast" : ""}`} role="status">
+          {feedback.action === "complete" && <Check className="completion-check" size="1.125rem" aria-hidden="true" />}
+          <span className="completion-message"><strong>{feedback.count === 1 ? (feedback.action === "complete" ? "Task completed" : "Item deleted") : `${feedback.count} items ${feedback.action === "complete" ? "completed" : "deleted"}`}</strong>{feedback.title && <span>{feedback.title}</span>}</span>
           <Button variant="ghost"
             disabled={undoing}
             onClick={() => void undoFeedback()}
@@ -662,17 +902,23 @@ export function App() {
           </ActionButton>
         </div>
       )}
-      {editing !== undefined && (
-        <TaskEditor
-          key={editing?.id ?? "new"}
-          item={editing}
-          defaults={defaults}
-          snapshot={snapshot}
-          dispatch={dispatch}
-          onClose={() => setEditing(undefined)}
-          onDelete={(item) => void remove(item)}
-        />
+      {edited && !feedback && (
+        <div className="undo-toast completion-toast" role="status">
+          <span className="completion-message"><strong>{edited.message}</strong><span>{edited.title}</span></span>
+          <Button variant="ghost" disabled={undoing} onClick={() => void revertEdit()}>Undo</Button>
+          <ActionButton aria-label="Dismiss undo" onClick={() => setEdited(null)}><X size="0.875rem" /></ActionButton>
+        </div>
       )}
+      {projectEditor !== undefined && <ProjectEditor project={projectEditor} snapshot={snapshot} dispatch={dispatch} onClose={() => setProjectEditor(undefined)} onSaved={openProject} />}
+      {templatesOpen && <Templates snapshot={snapshot} dispatch={dispatch} projectId={view === 'project' ? projectId : null} onClose={() => setTemplatesOpen(false)} />}
+      {commandsOpen && <CommandMenu snapshot={snapshot} onClose={() => setCommandsOpen(false)} onTask={openEditor} onProject={openProject} actions={[
+        { title: 'New task', run: () => beginTask() }, { title: 'New project', run: () => setProjectEditor(null) },
+        { title: 'Task templates', run: () => setTemplatesOpen(true) },
+        { title: 'Quick capture', run: () => act({ type: 'window', action: 'capture' }) },
+        ...navigation.map(item => ({ title: `Go to ${item.title}`, run: () => navigate(item.id) })),
+        { title: 'Preferences', run: () => navigate('settings') }, { title: 'Recently deleted', run: () => navigate('trash') },
+      ]} />}
+      {role !== "main" && editor}
     </div>
   );
 }

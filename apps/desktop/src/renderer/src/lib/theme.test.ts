@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { settingsSchema } from "@dock/contracts";
-import { themeStyle } from "./theme.ts";
+import { floatingStyle, themeStyle } from "./theme.ts";
 
 test("Ink is the default and legacy custom colors survive missing appearance fields", () => {
   const defaults = settingsSchema.parse({});
@@ -36,4 +36,15 @@ test("incomplete custom hex input previews the selected palette safely", () => {
   const draft = settingsSchema.parse({ colorPreset: "Graphite" });
   draft.themeColors.dark.primary = "#aa";
   assert.equal(themeStyle(draft)["--primary"], "#92b4ff");
+});
+
+test("small custom floating icons retain contrast and cannot become invisible", () => {
+  const white = settingsSchema.parse({ floating: { size: 28, color: '#ffffff', shape: 'square', opacity: 0.3 } });
+  assert.equal(floatingStyle(white.floating)['--floating-foreground'], '#000000');
+  assert.equal(floatingStyle(white.floating)['--floating-size'], '28px');
+  assert.equal(floatingStyle(white.floating)['--floating-radius'], '0');
+  assert.equal(floatingStyle(white.floating).opacity, 0.3);
+  assert.equal(floatingStyle({ ...white.floating, color: '#000000' })['--floating-foreground'], '#ffffff');
+  assert.equal(settingsSchema.safeParse({ floating: { opacity: 0 } }).success, false);
+  assert.equal(settingsSchema.safeParse({ floating: { size: 0 } }).success, false);
 });

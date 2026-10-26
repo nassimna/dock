@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, randomUUID } from "node:crypto";
-import { commandSchema, syncSessionSchema, type Item, type ItemInput, type SyncMutation } from "../../../packages/contracts/src/index.ts";
+import { commandSchema, syncSessionSchema, syncItemSchema, type Item, type ItemInput, type SyncMutation } from "../../../packages/contracts/src/index.ts";
 import { DockDatabase } from "../../desktop/src/main/database.ts";
 import { DockSync } from "../../desktop/src/main/sync.ts";
 import { schema } from "../../desktop/src/main/schema.ts";
@@ -44,9 +44,9 @@ test("email/password sessions isolate accounts; sync writes use CAS and durable 
     assert.equal((await request("/sync")).status, 401);
     const mutation: SyncMutation = {
       mutationId: randomBytes(16).toString("hex"), baseVersion: 0,
-      item: { id: randomUUID(), kind: "note", title: "Private note", body: "First", tags: ["Launch"], noteStyle: { font: "serif", size: 14 }, space: "Inbox", priority: false,
+      item: syncItemSchema.parse({ id: randomUUID(), kind: "note", title: "Private note", body: "First", tags: ["Launch"], noteStyle: { font: "serif", size: 14 }, space: "Inbox", priority: false,
         done: false, scheduledAt: null, recurrence: "none", linkedNoteId: null, recurrenceSourceId: null, deletedAt: null,
-        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }),
     };
     assert.equal((await request("/sync", mutation, first.token)).status, 200);
     const newer = { ...mutation, mutationId: randomBytes(16).toString("hex"), baseVersion: 1, item: { ...mutation.item, body: "Second" } };

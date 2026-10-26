@@ -20,11 +20,17 @@ test("local commands require the profile token and reject browser origins and ma
   const directory = mkdtempSync(join(parent, "local-api-"));
   let calls = 0;
   const snapshot: Snapshot = {
+    undo: null,
     items: [],
+    workspace: { projects: [], filters: [], labels: [], templates: [], goals: { daily: 5, weekly: 25, vacation: false, vacationPeriods: [] } },
+    deletedItems: [],
+    localServices: { backups: [], reminderLog: [], message: "" },
+    syncFeatures: { recoveryCode: "", devices: [], projects: [], error: "" },
     settings: settingsSchema.parse({}),
     sync: { connected: false, endpoint: "", email: "", phase: "disconnected", pending: 0, conflicts: 0, lastSyncedAt: null, error: "" },
     update: updateStateSchema.parse({ status: "unavailable" }),
     system: {
+      name: "Dock",
       platform: process.platform,
       version: "0.1.0",
       dataPath: join(directory, "dock.sqlite"),

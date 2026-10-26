@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { commandSchema, nextOccurrence, settingsSchema } from "@dock/contracts";
+import { commandSchema, itemInputSchema, nextOccurrence, settingsSchema } from "@dock/contracts";
 import { DockDatabase } from "./database.ts";
-import { checkReminders, isQuiet } from "./reminders.ts";
+import { checkReminders, isQuiet, ReminderJournal } from "./reminders.ts";
 
-test("reminders dispatch once, retry if unavailable, and dispatch again after snooze", () => {
+test("reminders dispatch once, retry if unavailable, and dispatch again after snooze", async () => {
   const database = new DockDatabase(":memory:");
   const now = new Date("2026-10-08T12:00:00Z");
   try {
@@ -19,19 +19,19 @@ test("reminders dispatch once, retry if unavailable, and dispatch again after sn
     assert.equal(command.type, "item.save");
     const item = database.execute(command, now).items[0]!;
     let dispatched = 0;
-    checkReminders(database, () => false, now);
+    await checkReminders(database, () => false, now);
     assert.equal(database.due(now).length, 1);
     const notify = () => {
       dispatched++;
       return true;
     };
-    checkReminders(database, notify, now);
-    checkReminders(database, notify, now);
+    await checkReminders(database, notify, now);
+    await checkReminders(database, notify, now);
     assert.equal(dispatched, 1);
     database.execute({ type: "item.snooze", id: item.id, minutes: 10 }, now);
-    checkReminders(database, notify, new Date("2026-10-08T12:09:00Z"));
+    await checkReminders(database, notify, new Date("2026-10-08T12:09:00Z"));
     assert.equal(dispatched, 1);
-    checkReminders(database, notify, new Date("2026-10-08T12:10:00Z"));
+    await checkReminders(database, notify, new Date("2026-10-08T12:10:00Z"));
     assert.equal(dispatched, 2);
     database.execute({ type: "item.toggle", id: item.id }, now);
     assert.equal(database.due(new Date("2026-10-09T12:00:00Z")).length, 0);
@@ -57,4 +57,48 @@ test("quiet hours cover midnight and monthly recurrence stays inside the next mo
   assert.equal(next.getMonth(), 1);
   assert.equal(next.getDate(), 28);
   assert.equal(next.getHours(), 9);
+});
+
+
+test("multiple reminders await display acknowledgment and retry failures with backoff", async () => {
+  const database = new DockDatabase(":memory:");
+  const journal = new ReminderJournal();
+  const now = new Date("2026-10-25T12:00:00Z");
+  try {
+    const result = database.execute({ type: "item.save", item: itemInputSchema.parse({
+      kind: "task", title: "Two reminders", scheduledAt: "2026-10-25T13:00:00Z",
+      task: { reminders: ["2026-10-25T11:00:00Z", "2026-10-25T12:00:00Z"] },
+    }) }, now);
+    let attempts = 0;
+    await checkReminders(database, async () => { attempts++; return false; }, now, journal);
+    assert.equal(attempts, 2);
+    assert.ok(journal.entries().every(entry => entry.status === "failed" && entry.attempts === 1));
+    await checkReminders(database, () => { attempts++; return true; }, now, journal);
+    assert.equal(attempts, 2, "failed reminders wait for backoff");
+    await checkReminders(database, async () => { attempts++; return true; }, new Date("2026-10-25T12:01:00Z"), journal);
+    assert.equal(attempts, 4);
+    assert.ok(journal.entries().every(entry => entry.status === "shown" && entry.attempts === 2));
+    assert.equal(database.due(new Date("2026-10-25T13:00:00Z"))[0]?.id, result.items[0]?.id, "extra reminders do not acknowledge the scheduled reminder");
+    await checkReminders(database, () => { attempts++; return true; }, new Date("2026-10-25T13:00:00Z"), journal);
+    assert.equal(attempts, 5);
+    await checkReminders(database, () => { attempts++; return true; }, new Date("2026-10-25T14:00:00Z"), journal);
+    assert.equal(attempts, 5);
+  } finally { database.close(); }
+});
+
+test("display confirmation for an old schedule cannot acknowledge a rescheduled reminder", async () => {
+  const database = new DockDatabase(":memory:");
+  const now = new Date("2026-10-25T12:00:00Z");
+  try {
+    const item = database.execute({ type: "item.save", item: itemInputSchema.parse({
+      kind: "task", title: "Reschedule while displaying", scheduledAt: now.toISOString(),
+    }) }, now).items[0]!;
+    await checkReminders(database, async () => {
+      database.execute({ type: "item.save", item: itemInputSchema.parse({
+        ...item, expectedRevision: item.revision, scheduledAt: "2026-10-25T13:00:00Z",
+      }) }, now);
+      return true;
+    }, now);
+    assert.equal(database.due(new Date("2026-10-25T13:00:00Z")).length, 1);
+  } finally { database.close(); }
 });

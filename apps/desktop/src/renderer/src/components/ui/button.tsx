@@ -24,9 +24,9 @@ const buttonVariants = cva(
       size: {
         ...controlSizes,
         lg: "h-10 rounded-md px-8",
-        icon: "size-9 p-0",
-        "icon-sm": "size-8 p-0",
-        "icon-xs": "size-6.5 p-0",
+        icon: "size-(--control-default) p-0",
+        "icon-sm": "size-(--control-sm) p-0",
+        "icon-xs": "size-(--control-xs) p-0",
         nav: "h-(--nav-row-height) px-2.5",
       },
     },
