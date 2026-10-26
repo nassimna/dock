@@ -11,6 +11,9 @@ const child = spawn(
     "--experimental-strip-types",
     "--test",
     "apps/desktop/src/main/database.test.ts",
+    "apps/desktop/src/main/task-data.test.ts",
+    "apps/desktop/src/main/local-services.test.ts",
+    "apps/desktop/src/renderer/src/lib/tasks.test.ts",
     "apps/desktop/src/main/appearance.test.ts",
     "apps/desktop/src/main/updates.test.ts",
     "apps/desktop/src/main/mac-update-installer.test.ts",
@@ -19,6 +22,7 @@ const child = spawn(
     "apps/desktop/src/main/reminders.test.ts",
     "apps/desktop/src/main/local-api.test.ts",
     "apps/sync/src/sync.test.ts",
+    "apps/sync/src/features.test.ts",
   ],
   { stdio: "inherit", env: { ...process.env, DOCK_TEST_ROOT: directory } },
 );

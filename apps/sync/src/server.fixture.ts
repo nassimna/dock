@@ -21,6 +21,7 @@ class LocalStatement implements Statement {
 export async function startSyncFixture(directory: string) {
   const database = new DatabaseSync(join(directory, "cloud.sqlite"));
   database.exec(readFileSync(new URL("../migrations/0001_sync.sql", import.meta.url), "utf8"));
+  database.exec(readFileSync(new URL("../migrations/0002_collaboration.sql", import.meta.url), "utf8"));
   const env: SyncEnvironment = {
     PASSWORD_PEPPER: "test-only-pepper-not-for-deployment",
     REGISTRATION_SECRET: "test-only-invite",

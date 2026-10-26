@@ -3,15 +3,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
 import { Cloud } from "lucide-react";
-import type { SyncStatus } from "@dock/contracts";
+import type { SyncFeatures } from "../../../../../packages/contracts/src/sync-features";
+import type { Command, SyncStatus } from "@dock/contracts";
 import { errorMessage, type Dispatch } from "./state";
 
-export function SyncSettings({ sync, dispatch }: { sync: SyncStatus; dispatch: Dispatch }) {
+export function SyncSettings({ sync, features, dispatch }: { sync: SyncStatus; features: SyncFeatures; dispatch: Dispatch }) {
   const [endpoint, setEndpoint] = useState(sync.endpoint);
   const [email, setEmail] = useState(sync.email);
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [signup, setSignup] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryCode, setRecoveryCode] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -19,16 +22,26 @@ export function SyncSettings({ sync, dispatch }: { sync: SyncStatus; dispatch: D
     setBusy(true);
     setError("");
     try {
-      await dispatch(signup
+      await dispatch(recovering
+        ? { type: "sync.recover", endpoint, email, password, recoveryCode }
+        : signup
         ? { type: "sync.signup", endpoint, email, password, inviteCode }
         : { type: "sync.login", endpoint, email, password });
       setPassword("");
       setInviteCode("");
       setSigningIn(false);
       setSignup(false);
+      setRecovering(false);
+      setRecoveryCode("");
     } catch (cause) {
       setError(errorMessage(cause));
     } finally { setBusy(false); }
+  }
+  async function accountAction(command: Command) {
+    setBusy(true); setError("");
+    try { await dispatch(command); }
+    catch (cause) { setError(errorMessage(cause)); }
+    finally { setBusy(false); }
   }
   async function disconnect() {
     setBusy(true);
@@ -59,6 +72,14 @@ export function SyncSettings({ sync, dispatch }: { sync: SyncStatus; dispatch: D
             <Button variant="outline" type="button"  disabled={busy} onClick={() => setSigningIn(!signingIn)}>Sign in again</Button>
             <Button variant="outline" type="button"  disabled={busy} onClick={() => void disconnect()}>{busy ? "Working…" : "Disconnect"}</Button>
           </div>
+          <div className="sync-actions">
+            <Button variant="outline" type="button" disabled={busy} onClick={() => void accountAction({ type: "sync.recovery.create" })}>Generate recovery code</Button>
+            <Button variant="outline" type="button" disabled={busy} onClick={() => void accountAction({ type: "sync.devices" })}>Refresh signed-in devices</Button>
+          </div>
+          {features.devices.map(device => <div className="sync-device" key={device.id}>
+            <span>{device.name}{device.current ? " · This device" : ""}<small className="muted"> · Expires {new Date(device.expiresAt).toLocaleDateString()}</small></span>
+            {!device.current && <Button variant="outline" size="sm" type="button" disabled={busy} onClick={() => void accountAction({ type: "sync.device.revoke", id: device.id })}>Revoke</Button>}
+          </div>)}
           <small className="muted">Disconnect keeps your local data. An offline disconnect cannot revoke the server session until it expires.</small>
         </div>
       )}
@@ -71,19 +92,28 @@ export function SyncSettings({ sync, dispatch }: { sync: SyncStatus; dispatch: D
             <Input type="email" value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" disabled={busy} />
           </Label>
           <Label className="field">Password
-            <Input type="password" value={password} minLength={12} maxLength={128} onChange={event => setPassword(event.target.value)} autoComplete={signup ? "new-password" : "current-password"} disabled={busy} />
+            <Input type="password" value={password} minLength={12} maxLength={128} onChange={event => setPassword(event.target.value)} autoComplete={signup || recovering ? "new-password" : "current-password"} disabled={busy} />
           </Label>
-          {signup && <Label className="field">Invite code
+          {recovering && <Label className="field">Recovery code
+            <Input value={recoveryCode} maxLength={64} onChange={event => setRecoveryCode(event.target.value.trim())} autoComplete="off" disabled={busy} />
+          </Label>}
+          {signup && !recovering && <Label className="field">Invite code
             <Input type="password" value={inviteCode} onChange={event => setInviteCode(event.target.value)} autoComplete="off" disabled={busy} />
           </Label>}
           <div className="sync-actions">
-            <Button variant="default" type="submit"  disabled={busy || !endpoint || !email || password.length < 12 || (signup && !inviteCode)}>{busy ? "Connecting…" : signup ? "Create account & sync" : "Sign in & sync"}</Button>
-            <Button variant="ghost" type="button"  disabled={busy} onClick={() => { setSignup(!signup); setError(""); }}>{signup ? "Already have an account? Sign in" : "Create an account"}</Button>
+            <Button variant="default" type="submit"  disabled={busy || !endpoint || !email || password.length < 12 || (signup && !recovering && !inviteCode) || (recovering && recoveryCode.length !== 64)}>{busy ? "Connecting…" : recovering ? "Reset password & sync" : signup ? "Create account & sync" : "Sign in & sync"}</Button>
+            <Button variant="ghost" type="button"  disabled={busy} onClick={() => { setSignup(!signup); setRecovering(false); setError(""); }}>{signup ? "Already have an account? Sign in" : "Create an account"}</Button>
+            <Button variant="ghost" type="button" disabled={busy} onClick={() => { setRecovering(!recovering); setSignup(false); setError(""); }}>{recovering ? "Back to sign in" : "Use a recovery code"}</Button>
           </div>
-          <small className="muted">Connecting uploads this workspace’s tasks and notes to your account. Registration needs an invite from the server owner. Password reset requires the server owner; no verification emails are sent.</small>
+          <small className="muted">Connecting uploads this workspace’s tasks and notes to your account. Registration needs an invite from the server owner. Keep your recovery code somewhere safe. Resetting your password with it signs out all other devices and generates a replacement code.</small>
         </form>
       )}
-      {(error || sync.error) && <p className="note-error" role="alert">{error || sync.error}</p>}
+      {features.recoveryCode && <div className="sync-recovery">
+        <strong>Save this recovery code</strong>
+        <p>Keep it outside Dock. Generating another code replaces this one. Dock does not email recovery links.</p>
+        <Input aria-label="Your recovery code" readOnly value={features.recoveryCode} onFocus={event => event.target.select()} />
+      </div>}
+      {(error || sync.error || features.error) && <p className="note-error" role="alert">{error || sync.error || features.error}</p>}
       {sync.conflicts > 0 && <p className="sync-conflicts" role="status">Conflicting edits were kept as {sync.conflicts} separate {sync.conflicts === 1 ? "copy" : "copies"}. Review “conflict copy” items in Notes or All tasks; delete them when resolved.</p>}
     </section>
   );

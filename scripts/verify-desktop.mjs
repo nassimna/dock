@@ -122,14 +122,15 @@ try {
     {
       node: "undefined",
       process: "undefined",
-      bridge: ["dispatch", "onBeforeUpdate", "onCapture", "onChanged", "prepareUpdate"],
+      bridge: ["dispatch", "moveFloating", "onBeforeUpdate", "onCapture", "onChanged", "onNavigate", "onOpenTask", "prepareUpdate"],
     },
   );
   await expect(main.getByText("A clear start to your day")).toBeVisible();
   passed("empty local database opens through the real Electron entry point");
 
   if (process.platform === "darwin") {
-    await application.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
+    await application.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows().find((window) => window.webContents.getURL().includes("window=main")).close());
   } else {
     await main.getByRole("button", { name: "Close window", exact: true }).click();
   }
@@ -148,17 +149,15 @@ try {
   passed("closing the main window keeps the app available in the tray");
 
   await main.getByRole("button", { name: "New task", exact: true }).click();
-  await main.getByLabel("Title", { exact: true }).fill("Review the proposal");
-  await main
-    .getByLabel("Notes", { exact: true })
-    .fill("Prepare the next steps");
-  await pick(main, "Space", "Work");
+  const editor = main.getByRole("complementary", { name: "New task" });
+  await editor.getByLabel("Title", { exact: true }).fill("Review the proposal");
+  await editor.getByLabel("Notes", { exact: true }).fill("Prepare the next steps");
+  await pick(main, "Priority", "P1");
   await main.getByRole("button", { name: "Schedule", exact: true }).click();
   await pick(main, "Schedule time hour", "23");
   await pick(main, "Schedule time minute", "50");
   await main.getByRole("dialog", { name: "Schedule picker" }).getByRole("button", { name: "Done", exact: true }).click();
   await pick(main, "Repeat", "Weekly");
-  await main.getByLabel("Important", { exact: true }).check();
   await main.getByRole("button", { name: "Save task", exact: true }).click();
   await expect(
     main.getByText("Review the proposal", { exact: true }),
@@ -166,12 +165,8 @@ try {
   const original = (await state(main)).items.find(
     (item) => item.title === "Review the proposal",
   );
-  assert.ok(
-    original.priority &&
-      original.recurrence === "weekly" &&
-      original.space === "Work",
-  );
-  passed("task editor saves priority, space, schedule, and recurrence");
+  assert.ok(original.task.priority === 1 && original.priority && original.recurrence === "weekly");
+  passed("task editor saves priority, schedule, and recurrence");
   await main.getByRole("button", { name: "New task", exact: true }).click();
   await main
     .getByLabel("Title", { exact: true })
@@ -181,12 +176,11 @@ try {
   await main.getByRole("dialog", { name: "Schedule picker" }).getByRole("button", { name: "Done", exact: true }).click();
   await pick(main, "Repeat", "Daily");
   await main.getByRole("button", { name: "Save task", exact: true }).click();
-  await expect(main.getByRole("dialog").getByRole("alert")).toContainText(
+  await expect(main.getByRole("complementary", { name: "New task" }).getByRole("alert")).toContainText(
     "Recurring tasks need a scheduled date.",
   );
-  await main
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
+  await main.getByRole("button", { name: "Close task details", exact: true }).click();
+  await main.getByRole("button", { name: "Discard changes", exact: true }).click();
   await main
     .getByRole("button", { name: "Dismiss error", exact: true })
     .click();
@@ -302,10 +296,11 @@ try {
   await screenshot(main, "dock-dark.png");
   passed("task and note links are visible in the desktop UI");
 
+  await main.getByRole("button", { name: "Show floating tasks icon", exact: true }).click();
+  const floating = application.windows().find(page => page.url().includes("window=floating"));
+  assert.ok(floating);
   const miniPromise = application.waitForEvent("window");
-  await main
-    .getByRole("button", { name: "Open mini window", exact: true })
-    .click();
+  await floating.getByRole("button", { name: /^Show tasks/ }).click();
   const mini = await miniPromise;
   assert.ok(mini);
   await expect(
@@ -367,17 +362,14 @@ try {
     .click();
   await main.getByRole("button", { name: "Delete task", exact: true }).click();
   await expect(
-    main.getByRole("status").filter({ hasText: "Task deleted" }),
+    main.getByRole("status").filter({ hasText: "Item deleted" }),
   ).toBeVisible();
   await main.getByRole("button", { name: "Undo", exact: true }).click();
   await expect(
     main.getByText("Book the appointment", { exact: true }),
   ).toBeVisible();
-  await main
-    .getByRole("button")
-    .filter({ hasText: "Book the appointment" })
-    .click();
-  await main.getByRole("button", { name: "10 min", exact: true }).click();
+  const booked = (await state(main)).items.find((item) => item.title === "Book the appointment");
+  await main.evaluate((id) => window.dock.dispatch({ type: "item.snooze", id, minutes: 10 }), booked.id);
   const snoozed = (await state(main)).items.find(
     (item) => item.title === "Book the appointment",
   );
@@ -392,7 +384,8 @@ try {
     .fill("no matching task");
   await expect(main.getByText("No matches yet")).toBeVisible();
   await main.getByRole("button", { name: "Clear search", exact: true }).click();
-  await main.getByRole("button", { name: "Schedule", exact: true }).click();
+  await main.getByRole("navigation", { name: "App navigation" }).getByRole("button", { name: /^Upcoming(?:\s|$)/ }).click();
+  await main.getByRole("button", { name: "Month & list", exact: true }).click();
   await expect(
     main.getByRole("button", { name: "Go to the Next Month", exact: true }),
   ).toBeVisible();
@@ -407,22 +400,16 @@ try {
   await main
     .getByRole("textbox", { name: "Global capture shortcut", exact: true })
     .fill("Control+Alt+J");
-  await main
-    .getByRole("button", { name: "Save preferences", exact: true })
-    .click();
   await expect(
     main.getByText("Preferences saved.", { exact: true }),
   ).toBeVisible();
-  assert.equal((await state(main)).settings.shortcut, "Control+Alt+J");
+  await expect.poll(async () => (await state(main)).settings.shortcut).toBe("Control+Alt+J");
   await application.evaluate(({ globalShortcut }) => {
     globalShortcut.register("Control+Alt+K", () => {});
   });
   await main
     .getByRole("textbox", { name: "Global capture shortcut", exact: true })
     .fill("Control+Alt+K");
-  await main
-    .getByRole("button", { name: "Save preferences", exact: true })
-    .click();
   await expect(main.getByRole("alert")).toContainText(
     "Your previous shortcut is still active",
   );

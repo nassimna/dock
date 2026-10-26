@@ -4,11 +4,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TimePicker } from "@/components/ui/time-picker";
-import { Badge } from "@/components/ui/badge";
-import { colorPresets, interfacePresets, roundingLevels, themeStyle } from "@/lib/theme";
+import { floatingStyle } from "@/lib/theme";
 import { useEffect, useState } from "react";
-import { Bell, Download, Keyboard, Palette, Terminal } from "lucide-react";
-import { settingsSchema, type Settings as Preferences, type Snapshot } from "@dock/contracts";
+import { Bell, Download, Keyboard, ListFilter, Terminal } from "lucide-react";
+import { floatingStyleSchema, settingsSchema, type Settings as Preferences, type Snapshot } from "@dock/contracts";
+import { AppearanceSettings } from "./AppearanceSettings";
+import { DataSettings } from "./DataSettings";
 import { SyncSettings } from "./SyncSettings";
 import { UpdateDetails } from "./Updates";
 import { Shortcut } from "./components";
@@ -27,31 +28,30 @@ export function Settings({
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState("");
   const mode = snapshot.settings.theme;
-  const colors = draft.themeColors[mode];
   const preferences = { ...draft, theme: mode, capturePinned: snapshot.settings.capturePinned, miniPinned: snapshot.settings.miniPinned };
+  function patchFloating(patch: Partial<Preferences["floating"]>) {
+    setDraft(current => ({ ...current, floating: { ...current.floating, ...patch } }));
+  }
+  const changed = JSON.stringify(preferences) !== JSON.stringify(snapshot.settings);
   useEffect(() => window.dock.onBeforeUpdate(async () => {
-    if (JSON.stringify(preferences) !== JSON.stringify(snapshot.settings))
-      throw new Error("Save your preferences before restarting Dock.");
+    if (changed) throw new Error("Wait for your preferences to finish saving before restarting Dock.");
   }));
-  async function save(event: React.FormEvent) {
-    event.preventDefault();
+  // Changes save automatically once input pauses; invalid values wait until they are corrected.
+  useEffect(() => {
+    if (!changed || recording) return;
     const parsed = settingsSchema.safeParse(preferences);
     if (!parsed.success) {
       setStatus(parsed.error.issues[0]!.message);
       return;
     }
-    setStatus("Saving…");
-    try {
-      const result = await dispatch({
-        type: "settings.save",
-        settings: parsed.data,
-      });
-      setDraft(result.settings);
-      setStatus("Preferences saved.");
-    } catch {
-      setStatus("This update could not be saved.");
-    }
-  }
+    const timer = window.setTimeout(() => {
+      setStatus("Saving…");
+      dispatch({ type: "settings.save", settings: parsed.data })
+        .then(() => setStatus("Preferences saved."))
+        .catch(() => { setDraft(snapshot.settings); setStatus("This change could not be saved. Your previous preference is kept."); });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [JSON.stringify(preferences), recording]);
   function record(event: React.KeyboardEvent) {
     if (!recording) return;
     event.preventDefault();
@@ -79,84 +79,60 @@ export function Settings({
     ].filter(Boolean);
     setDraft({ ...draft, shortcut: parts.join("+") });
     setRecording(false);
-    setStatus("Save preferences to register this shortcut.");
+
   }
   return (
     <div className="settings">
-      <form onSubmit={(event) => void save(event)}>
+      <form onSubmit={event => event.preventDefault()}>
         <div className="preferences-save">
-          <span role="status">{status || "Changes apply when you save."}</span>
-          <Button variant="default">Save preferences</Button>
+          <span role="status">{status || "Changes save automatically."}</span>
         </div>
-        <section>
-          <h2><Palette size="1.0625rem" /> Appearance</h2>
-          <p>Choose a layout, then make it yours with a palette and corner style. Preferences stay on this device.</p>
-          <div className="interface-presets" role="group" aria-label="Interface presets">
-            {Object.entries(interfacePresets).map(([id, preset]) => <Button key={id} variant="outline" type="button"
-              className="interface-preset" aria-pressed={draft.uiPreset === id}
-              onClick={() => setDraft({ ...draft, uiPreset: id as Preferences["uiPreset"] })}>
-              <span className={`interface-thumbnail ${id}`} aria-hidden="true"><i /><i /><i /></span>
-              <strong>{preset.name}{id === "ink" && <small>Default</small>}</strong><span>{preset.description}</span>
-            </Button>)}
-          </div>
-          <div className="fields">
-            <Label className="field">Theme
-              <Select value={mode} onValueChange={theme => act({ type: "settings.save", settings: { ...snapshot.settings, theme: theme as Preferences["theme"] } })}>
-                <SelectTrigger aria-label="Theme"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper"><SelectItem value="dark">Dark</SelectItem><SelectItem value="light">Light</SelectItem></SelectContent>
-              </Select>
-            </Label>
-            <Label className="field">Corners
-              <Select value={draft.rounding} onValueChange={rounding => setDraft({ ...draft, rounding: rounding as Preferences["rounding"] })}>
-                <SelectTrigger aria-label="Corners"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper">{Object.entries(roundingLevels).map(([id, level]) => <SelectItem key={id} value={id}>{level.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </Label>
-            <Label className="field">Layout density
-              <Select value={draft.density} onValueChange={density => setDraft({ ...draft, density: density as Preferences["density"] })}>
-                <SelectTrigger aria-label="Layout density"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper"><SelectItem value="compact">Compact</SelectItem><SelectItem value="comfortable">Comfortable</SelectItem></SelectContent>
-              </Select>
-            </Label>
-            <Label className="field">Note font
-              <Select value={draft.noteFont} onValueChange={noteFont => setDraft({ ...draft, noteFont: noteFont as Preferences["noteFont"] })}>
-                <SelectTrigger aria-label="Note font"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper"><SelectItem value="system">System sans</SelectItem><SelectItem value="serif">Serif</SelectItem><SelectItem value="mono">Monospace</SelectItem></SelectContent>
-              </Select>
-            </Label>
-            <Label className="field">Note text size
-              <Select value={String(draft.noteSize)} onValueChange={noteSize => setDraft({ ...draft, noteSize: Number(noteSize) as Preferences["noteSize"] })}>
-                <SelectTrigger aria-label="Note text size"><SelectValue /></SelectTrigger>
-                <SelectContent position="popper"><SelectItem value="14">Small</SelectItem><SelectItem value="16">Standard</SelectItem><SelectItem value="18">Large</SelectItem></SelectContent>
-              </Select>
-            </Label>
-          </div>
-          <div className="theme-presets" role="group" aria-label="Color presets">
-            <span className="preset-label">Color palette</span>
-            {Object.entries(colorPresets).map(([name, preset]) => <Button key={name} variant="outline" size="sm" type="button"
-              aria-pressed={draft.colorPreset === name}
-              onClick={() => setDraft({ ...draft, colorPreset: name as Preferences["colorPreset"], themeColors: { dark: {}, light: {} } })}>
-              <span className="color-swatch" style={{ background: preset[mode].primary }} />{name}
-            </Button>)}
-            <Button type="button" variant="ghost" size="sm" onClick={() => setDraft({ ...draft, themeColors: { dark: {}, light: {} } })}>Reset colors</Button>
-          </div>
-          <div className="theme-colors">
-            {([['background', 'Background'], ['card', 'Surfaces'], ['foreground', 'Text'], ['mutedForeground', 'Muted text'], ['border', 'Borders'], ['primary', 'Accent']] as const).map(([key, label]) =>
-              <Label className="field" key={key}>{label}
-                <div className="color-input">
-                  <span className="color-swatch" style={{ background: colors[key] || colorPresets[draft.colorPreset][mode][key] }} />
-                  <Input aria-label={`${label} color`} value={colors[key] ?? ''} placeholder={colorPresets[draft.colorPreset][mode][key]} maxLength={7} spellCheck={false}
-                    onChange={event => setDraft({ ...draft, themeColors: { ...draft.themeColors, [mode]: { ...colors, [key]: event.target.value || undefined } } })} />
+        <section aria-label="Floating icon settings">
+          <h2><ListFilter size="1.0625rem" /> Floating icon</h2>
+          <p>Small and always available while Dock runs. Click to toggle tasks, or drag the icon to move it.</p>
+          <div className="floating-settings-layout">
+            <div className="fields">
+              <Label className="field">Size · {draft.floating.size}px
+                <Input type="range" className="floating-range" aria-label="Floating icon size" min={28} max={72} step={2}
+                  value={draft.floating.size} onChange={event => patchFloating({ size: Number(event.target.value) })} />
+              </Label>
+              <Label className="field">Opacity · {Math.round(draft.floating.opacity * 100)}%
+                <Input type="range" className="floating-range" aria-label="Floating icon opacity" min={30} max={100} step={5}
+                  value={Math.round(draft.floating.opacity * 100)} onChange={event => patchFloating({ opacity: Number(event.target.value) / 100 })} />
+              </Label>
+              <Label className="field">Color
+                <Input type="color" aria-label="Floating icon color" value={draft.floating.color}
+                  onChange={event => patchFloating({ color: event.target.value })} />
+              </Label>
+              <div className="field"><Label htmlFor="floating-shape">Shape</Label>
+                <Select value={draft.floating.shape} onValueChange={shape => patchFloating({ shape: shape as Preferences['floating']['shape'] })}>
+                  <SelectTrigger id="floating-shape"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="circle">Circle</SelectItem><SelectItem value="rounded">Rounded square</SelectItem><SelectItem value="square">Square</SelectItem></SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="floating-preview">
+              <div className="floating-preview-surface"><div style={floatingStyle(draft.floating)} aria-hidden="true">
+                <div className="floating-button"><ListFilter />
+                  {draft.floating.showCount && <span className="floating-count">{Math.min(99, snapshot.items.filter(item => item.kind === 'task' && !item.done).length)}</span>}
                 </div>
-              </Label>)}
+              </div></div>
+              <small>Preview</small>
+            </div>
           </div>
-          <div className="theme-preview" style={themeStyle({ ...draft, theme: mode })}>
-            <div><strong>{interfacePresets[draft.uiPreset].name} · {draft.colorPreset}</strong><Badge>Work</Badge></div>
-            <p>Your notes and tasks, in your colors.</p>
-            <div className="theme-preview-controls"><Input size="sm" aria-label="Appearance preview field" placeholder="A thought worth keeping" readOnly /><Button type="submit" size="sm">Apply preferences</Button></div>
-            <small>{roundingLevels[draft.rounding].name} corners · {mode} mode. Save preferences to apply across your windows.</small>
+          <div className="floating-toggles">
+            <Label className="checkbox-label"><Checkbox checked={draft.floating.persistent} onCheckedChange={value => patchFloating({ persistent: value === true })} />Keep icon visible while tasks are expanded</Label>
+            <Label className="checkbox-label"><Checkbox checked={draft.floating.showCount} onCheckedChange={value => patchFloating({ showCount: value === true })} />Show task count on icon</Label>
+            <Label className="checkbox-label"><Checkbox checked={draft.floating.showHandle} onCheckedChange={value => patchFloating({ showHandle: value === true })} />Show a separate drag handle</Label>
+            <Label className="checkbox-label"><Checkbox checked={draft.floating.locked} onCheckedChange={value => patchFloating({ locked: value === true })} />Lock icon position</Label>
           </div>
+          <div className="detail-line">
+            <Button type="button" variant="outline" size="sm" onClick={() => act({ type: 'window', action: 'floating-reset' })}>Reset icon position</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(current => ({ ...current, floating: floatingStyleSchema.parse({}) }))}>Restore icon defaults</Button>
+          </div>
+          <small className="muted">Position and appearance are remembered. Minimizing the app or task panel keeps the icon available. Hide it explicitly from its right-click menu.</small>
         </section>
+        <AppearanceSettings draft={draft} setDraft={setDraft} snapshot={snapshot} act={act} />
         <section>
           <h2>
             <Keyboard size="1.0625rem" /> Quick capture
@@ -232,6 +208,11 @@ export function Settings({
         <section>
           <h2>Desktop behavior</h2>
           <Label className="checkbox-label">
+            <Checkbox checked={draft.rememberLastView} onCheckedChange={checked => setDraft({ ...draft, rememberLastView: checked === true })} />
+            Remember last view
+          </Label>
+          <small className="muted">Reopen your last task view and keep each project’s list or board layout. Off by default.</small>
+          <Label className="checkbox-label">
             <Checkbox
               checked={draft.closeToTray}
               disabled={!snapshot.system.trayAvailable}
@@ -258,6 +239,14 @@ export function Settings({
           )}
           <Label className="checkbox-label">
             <Checkbox
+              checked={draft.floatingAtStartup}
+              onCheckedChange={checked => setDraft({ ...draft, floatingAtStartup: checked === true })}
+            />{" "}
+            Show floating icon when Dock starts
+          </Label>
+          <small className="muted">Click the icon to view tasks. Drag it to move, or right-click to customize.</small>
+          <Label className="checkbox-label">
+            <Checkbox
               checked={draft.openMiniAtStartup}
               onCheckedChange={(checked) =>
                 setDraft({ ...draft, openMiniAtStartup: checked === true })
@@ -266,7 +255,7 @@ export function Settings({
             Open sticky window when Dock starts
           </Label>
           <small className="muted">
-            Applies next time Dock starts. Use the sticky window’s pin to keep it above other apps.
+            Starts with tasks expanded. Use the sticky window’s pin to keep the panel above other apps.
             {snapshot.system.platform === "darwin" && " It stays on every desktop, pinned or unpinned."}
           </small>
           {!snapshot.system.topmostSupported && (
@@ -286,7 +275,8 @@ export function Settings({
           <UpdateDetails update={snapshot.update} version={snapshot.system.version} act={act} />
         </section>
       </form>
-      <SyncSettings sync={snapshot.sync} dispatch={dispatch} />
+      <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch} />
+      <DataSettings snapshot={snapshot} dispatch={dispatch} />
       <section>
         <h2>
           <Download size="1.0625rem" /> Your data

@@ -21,12 +21,13 @@ From `apps/sync`, after authorization:
 
 The compatibility date enables Workers' Node.js support, including `node:crypto`. Passwords use scrypt (`N=32768, r=8, p=3`) with a random salt and a Worker-secret HMAC pepper. Preserve the pepper securely: replacing it invalidates existing password hashes. The invitation secret can be changed to stop previously distributed invites from working.
 
-Registration is invite-only. Email identifies the account; it is not verified. Self-service password reset and verification emails are not implemented. The server owner must handle account recovery manually. Device sessions expire after 30 days. Online disconnect revokes the current session; offline disconnect only removes the encrypted local session.
+Registration is invite-only. Email identifies the account; it is not verified. Signup returns a one-time recovery code. A signed-in device can generate a replacement code in Preferences; the new code invalidates the previous one. The code resets the password without an email service, revokes every existing session, and issues a replacement code and session. No verification or reset emails are sent. Losing both the password and recovery code requires help from the server owner. Device sessions show their computer name in Preferences and can be revoked individually. Sessions expire after 30 days. Online disconnect revokes the current session; offline disconnect only removes the encrypted local session.
 
 The Worker has no CORS access for browser clients; the Electron main process owns network access. Bearer session hashes, not raw session tokens, are stored in D1. Authentication is rate-limited by account identifier and source IP.
 
 ## Sync behavior
 
+- Private project names, nesting, colors, favorites, and sections sync through an account-scoped versioned metadata record before task content. Concurrent additions merge by project ID; a local pending edit to an existing project is retained when merging remote metadata. Shared project metadata remains controlled by its owner.
 - Every content mutation is queued in the same local SQLite transaction. Preferences and notification-delivery markers remain local.
 - On connect/reconnect, the client pulls account-scoped changes using a persistent cursor, then pushes queued records. Dependencies (linked notes and recurrence parents) sync first.
 - Each mutation has a durable ID and an expected server version. D1's transactional batch applies a matching version once and records a retry receipt.
@@ -36,6 +37,14 @@ The Worker has no CORS access for browser clients; the Electron main process own
 - Each local profile is permanently bound to its first account and server, including after disconnect. Use a different `DOCK_DATA_DIR` profile for another account to prevent cross-account uploads. Disconnect does not delete local items or queued changes.
 - Sessions are encrypted with Electron `safeStorage`. A Linux plaintext key-store fallback is rejected. Passwords are never persisted on the device or returned in renderer snapshots.
 - Sync retries automatically while Dock is running. The status distinguishes pending changes, sync progress, offline, and errors. It does not implement a mobile client or remote notification delivery.
+
+## Shared projects
+
+Enable sharing from a top-level project, then invite an existing email account on the same server. The owner manages members and publishes project names/sections; members can edit tasks and assign them to other project members. Shared task payloads live in the owner's account partition and retain version checks and idempotent mutation receipts. Other accounts cannot read or mutate them.
+
+The client bootstraps accessible project metadata and records before its regular incremental exchange. Losing membership removes the project from the next successful refresh, hides its local task cache, and excludes that cache from outgoing changes and reminders. An offline device retains its existing cache until it reconnects; revocation cannot remove already downloaded data remotely. Removing a member clears that member's task assignments.
+
+Local attachment bytes never upload. Private note links cannot be included in a shared task, and shared tasks stay in their project. Local sub-projects must be moved to the top level before enabling sharing. Shared project metadata is updated with **Update shared project** in its member controls. Apply `0002_collaboration.sql` to the intended existing D1 database before deploying this server version; this change does not deploy or migrate cloud data automatically.
 
 ## Local verification
 

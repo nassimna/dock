@@ -62,8 +62,8 @@ This follows inspected patterns from [Ternline](https://github.com/nassimna/tern
 
 ## Local behavior
 
-- Tasks and notes support Inbox, Work, and Personal spaces, search, and deletion with undo.
-- Tasks support priorities, scheduling, recurring follow-ups, completion, and snooze.
+- Tasks live in the Inbox or in projects; notes keep an Inbox, Work, or Personal space. Search covers titles, notes, labels, comments, and project names. Deleted items can be restored for 30 days or deleted permanently.
+- Tasks support P1–P4 priorities, labels, nested subtasks, scheduled dates, separate deadlines, durations, multiple reminders, recurring follow-ups, completion history, and snooze. The original Important flag maps to P1; P1–P3 appear in the Priority view. Existing Work and Personal space tasks move into projects of the same name on first launch.
 - A configurable global shortcut opens a separate capture window. Its draft remains when dismissed.
 - A separate mini window shares the same data and can stay above other windows where the desktop supports it.
 - Reminders run while Dock is running, including when hidden in the tray. Sleep delays are checked when the computer resumes. Operating-system notification permissions still apply.
@@ -75,6 +75,22 @@ This follows inspected patterns from [Ternline](https://github.com/nassimna/tern
 - The CLI sends validated commands to the running app; it never opens a second database writer.
 
 Cross-device sync now has a Workers + D1 backend and an offline queue. Connect an email/password account in Preferences after deploying the backend; see [sync setup](apps/sync/README.md). Sync is not deployed by default. Remote push notifications are not implemented. Native always-on-top is unavailable under Wayland, and global shortcuts depend on the compositor's portal support.
+
+## Projects and planning
+
+Create projects from the sidebar, nest them under a parent, and add sections in **Edit project**. Project lists group tasks by section; the board lets you drag or Option+arrow cards within and between columns, and its **Columns** menu and column menus show, hide, add, rename, reorder, and delete columns. Deleting a column moves its tasks to No section. Moving a private parent task also moves its subtasks. Completing a parent completes its subtasks; reopening it leaves their completed state intact.
+
+**Upcoming** offers a weekly time grid and the month/list layout. Drag unscheduled tasks onto a half-hour slot, or move a calendar block; block length follows task duration and deadlines appear above each day. Task details include comments and local file copies (documents/images up to 25 MB each).
+
+Inline add, task titles, and native quick capture recognize local rules such as `Write notes next Tue 9am p2 @writing for 45m #"Launch v0.2"`. Supported dates include today, tomorrow, next weekday, and YYYY-MM-DD; times use 9am or 14:30. `every weekday` and `every 2 weeks after completion` set recurrence. Recognized tokens are shown before saving. Unrecognized text stays in the title. This parser runs locally.
+
+**Filters & labels** saves queries with `&`, `|`, `!`, and parentheses. Rules include today, overdue, no-date, done, p1–p4, #Project, @label, assigned:email, due:YYYY-MM-DD, and quoted text. Quote project names containing spaces. Queries exclude completed tasks unless they include `done`. Favorite filters appear in the sidebar. Templates apply reusable checklists atomically; **Select tasks** provides bulk completion, deletion, priority, project, and schedule changes. Cmd/Ctrl+K opens commands and task/project search. In task lists, J/K or the arrow keys move between tasks, Enter opens one beside the list, E completes it, Q adds a task, / searches, and Cmd/Ctrl+Z undoes the last completion, deletion, or quick edit.
+
+**Progress** shows completion history, daily/weekly goals, and a daily-goal streak. Vacation intervals pause the streak. Completion timestamps for items created before this upgrade are initialized from their last update time. Goals, filters, templates, and label definitions stay local; task labels and private/shared project metadata travel through Dock Sync.
+
+Automatic reminders wait for Electron's operating-system display acknowledgment before marking a reminder shown. Failed attempts retry up to three times with backoff; Preferences exposes the log and manual retry. A display acknowledgment does not prove that the user saw a notification. Quiet hours and running-in-tray behavior still apply.
+
+Todoist CSV import supports quoted/multiline fields, sections, subtasks, priorities, durations, and ISO/date-formatted scheduling. Unsupported natural-language DATE values are rejected before importing; recurring CSV date text must be converted to dates first. Attachments remain local to the source computer. Account recovery, named devices, shared projects, and assignees use Dock's own optional sync server; apply its new migration before deployment as described in [sync setup](apps/sync/README.md). No paid or third-party integration is required by these local features.
 
 ## App updates
 
@@ -108,7 +124,7 @@ Run `pnpm dock help` for the full command list. The CLI uses a private token and
 
 ## Data and verification
 
-The database is `dock.sqlite` in the OS application-data directory under `Dock`: `~/.config/Dock` on Linux (or `$XDG_CONFIG_HOME/Dock`), `~/Library/Application Support/Dock` on macOS, and `%APPDATA%/Dock` on Windows. Preferences show the exact location. A JSON backup can be exported there; importing backups is deferred.
+The database is `dock.sqlite` in the OS application-data directory under `Dock`: `~/.config/Dock` on Linux (or `$XDG_CONFIG_HOME/Dock`), `~/Library/Application Support/Dock` on macOS, and `%APPDATA%/Dock` on Windows. Preferences show the exact location. Preferences lists automatic daily JSON backups (up to 30 copies), creates manual backups, and imports JSON or Todoist project CSV files. Restore recovers missing/deleted records and preserves current items and preferences. Recently deleted tasks and notes can be restored for 30 days. Local attachment copies are stored alongside the database; JSON backups contain their references, so keep the attachments folder when moving a complete profile.
 
 `pnpm test` runs focused SQLite, recurrence, reminder, local API, and sync checks in a disposable profile. `pnpm test:desktop` exercises the real production Electron build after `pnpm build`, including an app restart. On Linux it needs existing `Xvfb` and `xdotool` commands and uses an isolated display. Screenshots go to `.validation/screenshots` or `DOCK_EVIDENCE_DIR`. Test profiles and displays are removed afterward.
 
