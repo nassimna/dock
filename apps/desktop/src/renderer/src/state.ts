@@ -31,6 +31,12 @@ export function useDock() {
   }, [dispatch]);
   const act = useCallback(
     (command: Command) => {
+      if (command.type === "window" && (command.action === "capture" ||
+          command.action === "hide" && new URLSearchParams(location.search).get("window") === "capture")) {
+        void window.dock.setCaptureVisible(command.action === "capture")
+          .then(() => setError(""), cause => setError(errorMessage(cause)));
+        return;
+      }
       void dispatch(command).catch(() => {});
     },
     [dispatch],

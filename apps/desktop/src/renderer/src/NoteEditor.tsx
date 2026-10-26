@@ -59,6 +59,7 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
   const lastEmitted = useRef(value);
   const onChangeRef = useRef(onChange); onChangeRef.current = onChange;
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] }, link: {
         openOnClick: false, autolink: false, protocols: ["dock-note"],
@@ -292,9 +293,9 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
         style={{ color: color === "default" || index ? "var(--foreground)" : `var(--note-color-${color})`, backgroundColor: index && color !== "default" ? `var(--note-bg-${color})` : "var(--card)" }}
         onMouseDown={event => event.preventDefault()} onClick={() => {
           const selected = color === "default" ? null : `var(--note-${index ? "bg" : "color"}-${color})`;
-          if (block) editor.chain().focus().updateAttributes(state!.block!.type!, { [index ? "backgroundColor" : "textColor"]: selected }).run();
-          else if (index) { if (selected) editor.chain().focus().setBackgroundColor(selected).run(); else editor.chain().focus().unsetBackgroundColor().run(); }
-          else { if (selected) editor.chain().focus().setColor(selected).run(); else editor.chain().focus().unsetColor().run(); }
+          if (block) editor!.chain().focus().updateAttributes(state!.block!.type!, { [index ? "backgroundColor" : "textColor"]: selected }).run();
+          else if (index) { if (selected) editor!.chain().focus().setBackgroundColor(selected).run(); else editor!.chain().focus().unsetBackgroundColor().run(); }
+          else { if (selected) editor!.chain().focus().setColor(selected).run(); else editor!.chain().focus().unsetColor().run(); }
         }}>A</Button>)}
     </div></div>)}</div>;
   }
@@ -318,10 +319,10 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
     <PopoverContent align="end" className="note-format-menu" onFocusOutside={event => event.preventDefault()} onCloseAutoFocus={event => event.preventDefault()}>
       <Button variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={beginLink}><Link2 size="0.875rem" /> Add or edit link</Button>
       <div className="note-format-marks">{marks.map(action => <Button key={action.label} variant="ghost" size="icon-xs" aria-label={action.label} aria-pressed={action.active} onMouseDown={event => event.preventDefault()} onClick={action.run}><action.icon size="0.9375rem" /></Button>)}</div>
-      <div className="note-format-blocks">{[["Text", "paragraph", 0], ["Heading 1", "heading", 1], ["Heading 2", "heading", 2], ["Heading 3", "heading", 3]].map(([label, type, level]) => <Button key={label} variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={() => { if (type === "heading") editor.chain().focus().setHeading({ level: Number(level) as 1 | 2 | 3 }).run(); else editor.chain().focus().setParagraph().run(); }}>{label}</Button>)}</div>
+      <div className="note-format-blocks">{[["Text", "paragraph", 0], ["Heading 1", "heading", 1], ["Heading 2", "heading", 2], ["Heading 3", "heading", 3]].map(([label, type, level]) => <Button key={label} variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={() => { if (type === "heading") editor!.chain().focus().setHeading({ level: Number(level) as 1 | 2 | 3 }).run(); else editor!.chain().focus().setParagraph().run(); }}>{label}</Button>)}</div>
       {palette(false)}
-      <Button variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().focus().unsetAllMarks().run()}>Clear formatting</Button>
-      <div className="note-indent-actions"><Button variant="ghost" size="xs" disabled={!editor.can().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor.chain().focus().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Indent</Button><Button variant="ghost" size="xs" disabled={!editor.can().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor.chain().focus().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Outdent</Button></div>
+      <Button variant="ghost" size="xs" onMouseDown={event => event.preventDefault()} onClick={() => editor!.chain().focus().unsetAllMarks().run()}>Clear formatting</Button>
+      <div className="note-indent-actions"><Button variant="ghost" size="xs" disabled={!editor.can().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor!.chain().focus().sinkListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Indent</Button><Button variant="ghost" size="xs" disabled={!editor.can().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem")} onClick={() => editor!.chain().focus().liftListItem(editor.isActive("taskList") ? "taskItem" : "listItem").run()}>Outdent</Button></div>
       {!!state.selectedText && <small>{state.selectedText.trim().split(/\s+/).filter(Boolean).length} words · {state.selectedText.length} characters selected</small>}
     </PopoverContent>
   </Popover>;

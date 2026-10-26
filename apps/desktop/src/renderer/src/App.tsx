@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { floatingStyle, themeStyle } from "@/lib/theme";
-import { Fragment, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   CalendarDays,
   BarChart3,
@@ -47,7 +47,7 @@ import {
 } from "@dock/contracts";
 import { Capture } from "./Capture";
 import { ActionButton, Empty, RecognizedTokens, Shortcut, TaskRow, todaySchedule } from "./components";
-import { Notes } from "./Notes";
+const Notes = lazy(() => import("./Notes").then(module => ({ default: module.Notes })));
 import { Schedule } from "./Schedule";
 import { Settings } from "./Settings";
 import { TaskEditor } from "./TaskEditor";
@@ -192,6 +192,9 @@ function Chrome({
 export function App() {
   const { snapshot, dispatch, act, error, clearError } = useDock();
   const [view, setView] = useState<View>("today");
+  const [notesMounted, setNotesMounted] = useState(false);
+  const [taskLimit, setTaskLimit] = useState(100);
+  useEffect(() => { if (view === "notes") setNotesMounted(true); }, [view]);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [filterId, setFilterId] = useState<string | null>(null);
   const [projectEditor, setProjectEditor] = useState<Project | null | undefined>();
@@ -211,6 +214,7 @@ export function App() {
   const [newScheduledAt, setNewScheduledAt] = useState<string | undefined>();
   const [bulkBusy, setBulkBusy] = useState(false);
   const [query, setQuery] = useState("");
+  useEffect(() => { setTaskLimit(100); }, [view, projectId, filterId, query]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [editing, setEditing] = useState<Item | null | undefined>(undefined);
   /** Another task waiting to open while the side panel has unsaved changes. */
@@ -223,6 +227,17 @@ export function App() {
   latest.current = snapshot;
   const [undoing, setUndoing] = useState(false);
   const [completions, setCompletions] = useState<Record<string, { item: Item; phase: "saving" | "complete" }>>({});
+  const displayItems = useMemo(() => (snapshot?.items ?? []).map(item => completions[item.id]?.item ?? item), [snapshot?.items, completions]);
+  const itemIndex = useMemo(() => {
+    const byId = new Map(displayItems.map(item => [item.id, item]));
+    const children = new Map<string, Item[]>();
+    for (const item of displayItems) {
+      if (!item.task.parentId) continue;
+      const siblings = children.get(item.task.parentId) ?? [];
+      siblings.push(item); children.set(item.task.parentId, siblings);
+    }
+    return { byId, children };
+  }, [displayItems]);
   const completionTimers = useRef(new Map<string, number>());
   const [captureTitle, setCaptureTitle] = useState("");
   const [captureError, setCaptureError] = useState("");
@@ -476,7 +491,6 @@ export function App() {
     </div>;
   }
   const today = localDate(new Date(clock));
-  const displayItems = snapshot.items.map(item => completions[item.id]?.item ?? item);
   const project = snapshot.workspace.projects.find(project => project.id === projectId);
   const savedFilter = snapshot.workspace.filters.find(filter => filter.id === filterId);
   let filterPredicate = (_item: Item) => true, filterFailure = '';
@@ -487,7 +501,7 @@ export function App() {
   const tasks = displayItems.filter(
     (item) => item.kind === "task" && (!query || matchesSearch(item, query, snapshot.workspace)),
   );
-  const stickyTasks = tasks.filter(item => !item.done &&
+  const stickyTasks = (role === "mini" ? tasks : []).filter(item => !item.done &&
     (stickyFilter === "today" ? dueBy(item, today) :
       stickyFilter === "starred" ? item.task.priority < 4 : true)).sort((a, b) => compareTasks(a, b, today));
   const visible = tasks
@@ -514,7 +528,8 @@ export function App() {
       localDate(new Date(item.scheduledAt)) < today &&
       !item.done,
   );
-  const remaining = visible.filter((item) => !overdue.includes(item));
+  const overdueIds = new Set(overdue.map(item => item.id));
+  const remaining = visible.filter(item => !overdueIds.has(item.id));
   const defaults = {
     space: "Inbox" as const,
     scheduledAt: view === "today" ? todaySchedule() : null,
@@ -577,6 +592,9 @@ export function App() {
       <TaskRow
         item={item}
         snapshot={snapshot}
+        note={itemIndex.byId.get(item.linkedNoteId ?? "")}
+        parent={nested ? undefined : itemIndex.byId.get(item.task.parentId ?? "")}
+        children={itemIndex.children.get(item.id) ?? []}
         onChange={(item, changes, message) => void quickEdit(item, changes, message)}
         nested={nested}
         onOpen={openEditor}
@@ -586,7 +604,7 @@ export function App() {
         selected={bulkMode ? selected.includes(item.id) : undefined}
         onSelect={() => setSelected(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])}
       />
-      {tree && rows(displayItems.filter(child => child.task.parentId === item.id && !child.done)
+      {tree && rows((itemIndex.children.get(item.id) ?? []).filter(child => !child.done)
         .sort((a, b) => a.task.order - b.task.order || compareTasks(a, b, today)), true, true)}
     </Fragment>);
 
@@ -780,13 +798,13 @@ export function App() {
               </div>
             )}
             <div className="notes-view" hidden={view !== "notes"}>
-              <Notes
+              {(view === "notes" || notesMounted) && <Suspense fallback={<p role="status">Opening notes…</p>}><Notes
                 snapshot={snapshot}
                 query={query}
                 dispatch={dispatch}
                 onTask={openEditor}
                 onDelete={(item) => void remove(item)}
-              />
+              /></Suspense>}
             </div>
             {view === "schedule" ? (
               <Schedule items={displayItems} renderTasks={rows} snapshot={snapshot} dispatch={dispatch} onOpen={openEditor} onAdd={scheduledAt => beginTask(null, scheduledAt)} />
@@ -813,14 +831,14 @@ export function App() {
                   {captureTitle && (() => { try { return <RecognizedTokens tokens={parseTaskText(captureTitle, snapshot.workspace, new Date(), ignored).recognized} onKeep={token => setIgnored(current => [...current, token.toLowerCase()])} />; } catch { return null; } })()}
                   {!(view === 'project' && layout === 'board') && <div className="list-toolbar"><span className="muted">{visible.length} {visible.length === 1 ? 'task' : 'tasks'}</span><Button variant="ghost" size="xs" onClick={() => { setBulkMode(!bulkMode); setSelected([]); }}>{bulkMode ? 'Done selecting' : 'Select tasks'}</Button>{bulkMode && <Button size="xs" variant="ghost" onClick={() => setSelected(visible.map(item => item.id))}>Select all</Button>}{view !== 'project' && <Button variant="ghost" size="xs" onClick={() => setTemplatesOpen(true)}>Templates</Button>}</div>}
                   {!!selected.length && <div className="bulk-actions" aria-label="Bulk actions"><strong>{selected.length} selected</strong><Button size="xs" variant="outline" disabled={bulkBusy} onClick={() => void bulk('complete')}>Complete</Button><Select value="priority" onValueChange={value => void bulk('update', { task: { priority: Number(value) as TaskProperties['priority'] } })}><SelectTrigger size="xs" aria-label="Bulk priority" disabled={bulkBusy}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="priority" disabled>Priority</SelectItem>{[1,2,3,4].map(priority => <SelectItem key={priority} value={String(priority)}>P{priority}</SelectItem>)}</SelectContent></Select><Select value="project" onValueChange={value => void bulk('update', { task: { projectId: value === 'none' ? null : value, sectionId: null } })}><SelectTrigger size="xs" aria-label="Bulk project" disabled={bulkBusy}><SelectValue /></SelectTrigger><SelectContent><SelectItem value="project" disabled>Move to project</SelectItem><SelectItem value="none">No project</SelectItem>{snapshot.workspace.projects.map(project => <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>)}</SelectContent></Select><Button size="xs" variant="outline" disabled={bulkBusy} onClick={() => void bulk('update', { scheduledAt: todaySchedule() })}>Today</Button><Button size="xs" variant="ghost" className="danger" disabled={bulkBusy} onClick={() => void bulk('delete')}>Delete</Button></div>}
-                  {view === 'project' && project && layout === 'board' ? <ProjectBoard project={project} items={visible} snapshot={snapshot} dispatch={dispatch} onOpen={openEditor} onAdd={beginTask} onToggle={item => void toggleTask(item)} /> : view === 'project' && project ? <div className="project-list">{[{ id: null, name: 'No section' }, ...project.sections].map(section => <section key={section.id ?? 'none'}><div className="group-label"><span>{section.name}</span><span>{visible.filter(item => item.task.sectionId === section.id).length}</span><ActionButton aria-label={`Add task in ${section.name}`} size="icon-xs" onClick={() => beginTask(section.id)}><Plus size="0.875rem" /></ActionButton></div>{rows(visible.filter(item => item.task.sectionId === section.id), true)}</section>)}</div> : <>
+                  {view === 'project' && project && layout === 'board' ? <ProjectBoard project={project} items={visible} snapshot={snapshot} dispatch={dispatch} onOpen={openEditor} onAdd={beginTask} onToggle={item => void toggleTask(item)} /> : view === 'project' && project ? <div className="project-list">{[{ id: null, name: 'No section' }, ...project.sections].map(section => <section key={section.id ?? 'none'}><div className="group-label"><span>{section.name}</span><span>{visible.filter(item => item.task.sectionId === section.id).length}</span><ActionButton aria-label={`Add task in ${section.name}`} size="icon-xs" onClick={() => beginTask(section.id)}><Plus size="0.875rem" /></ActionButton></div>{rows(visible.slice(0, taskLimit).filter(item => item.task.sectionId === section.id), true)}</section>)}</div> : <>
                   {!!overdue.length && (
                     <>
                       <div className="group-label overdue">
                         <span>Overdue</span>
                         <span>{overdue.length}</span>
                       </div>
-                      {rows(overdue)}
+                      {rows(overdue.slice(0, taskLimit))}
                     </>
                   )}
                   {!!remaining.length && (
@@ -835,7 +853,7 @@ export function App() {
                         </span>
                         <span>{remaining.length}</span>
                       </div>
-                      {rows(remaining)}
+                      {rows(remaining.slice(0, Math.max(0, taskLimit - overdue.length)))}
                     </>
                   )}
                   {!visible.length && (
@@ -858,6 +876,8 @@ export function App() {
                     </Empty>
                   )}
                   </>}
+                  {!(view === 'project' && layout === 'board') && visible.length > taskLimit &&
+                    <Button variant="outline" onClick={() => setTaskLimit(current => current + 100)}>Show more tasks · {taskLimit} of {visible.length}</Button>}
                 </>
               )
             )}

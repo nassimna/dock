@@ -31,12 +31,20 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
   const draftRef = useRef<Record<string, Draft>>({});
   const queues = useRef(new Map<string, Promise<unknown>>());
   const pending = useRef(new Map<string, number>());
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const revisions = useRef(new Map<string, number>());
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
   useEffect(() => window.dock.onBeforeUpdate(async () => {
-    await Promise.all(queues.current.values());
+    await Promise.all(notes.map(flush));
     if (notes.some(note => draftRef.current[note.id] && draftRef.current[note.id]!.status !== "saved"))
       throw new Error("Save your notes or resolve their save errors before restarting Dock.");
-  }), [snapshot.items]);
+  }, true), [snapshot.items]);
+  useEffect(() => () => {
+    for (const note of notesRef.current) void flush(note);
+    for (const timer of timers.current.values()) clearTimeout(timer);
+    timers.current.clear();
+  }, []);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [tagQuery, setTagQuery] = useState("");
@@ -70,10 +78,18 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
     if (changed) { draftRef.current = next; setDrafts(next); }
   }, [snapshot.items]);
 
-  function save(item: Item, content: Draft) {
+  function save(item: Item, content: Draft): Promise<unknown> {
+    clearTimeout(timers.current.get(item.id));
+    timers.current.delete(item.id);
+    if (content.status === "saved")
+      return queues.current.get(item.id) ?? Promise.resolve();
+    if (pending.current.get(item.id)) return queues.current.get(item.id)!.then(() => {
+      const latest = draftRef.current[item.id];
+      if (latest?.status === "saving") return save(item, latest);
+    });
     if (!content.title.trim()) {
       put(item.id, { ...content, status: "error", error: "Give the note a title to save it." });
-      return;
+      return Promise.resolve();
     }
     pending.current.set(item.id, (pending.current.get(item.id) ?? 0) + 1);
     put(item.id, { ...content, status: "saving", error: "" });
@@ -98,14 +114,24 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
       }
     });
     queues.current.set(item.id, queue);
+    return queue;
+  }
+  async function flush(item: Item): Promise<void> {
+    const content = draftRef.current[item.id];
+    if (content?.status === "saving") await save(item, content);
+    else await queues.current.get(item.id);
+    if (draftRef.current[item.id]?.status === "saving") await flush(item);
   }
   function edit(update: Partial<Draft>) {
     if (!note || !draft) return;
     const current = draftRef.current[note.id] ?? draft;
-    const next: Draft = { ...current, ...update, error: "", generation: current.generation + 1 };
-    save(note, next);
+    const next: Draft = { ...current, ...update, status: "saving", error: "", generation: current.generation + 1 };
+    put(note.id, next);
+    clearTimeout(timers.current.get(note.id));
+    timers.current.set(note.id, setTimeout(() => void save(note, draftRef.current[note.id]!), 300));
   }
   function choose(id: string) {
+    if (note && note.id !== id) void flush(note);
     setSelected(id); setFilter(""); setLibraryOpen(false); setTaskError("");
   }
   useEffect(() => {
@@ -121,6 +147,7 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
   async function create() {
     const existing = new Set(notes.map(note => note.id));
     try {
+      if (note) await flush(note);
       const result = await dispatch({ type: "item.save", item: {
         kind: "note", title: "Untitled note", body: "", space: "Inbox", priority: false,
         scheduledAt: null, recurrence: "none", linkedNoteId: null,
@@ -189,7 +216,7 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
           </Popover>
           <Popover>
             <PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="More note actions"><MoreHorizontal size="1rem" /></Button></PopoverTrigger>
-            <PopoverContent align="end" className="note-action-menu"><Button variant="ghost" className="danger" onClick={() => onDelete(note)}><Trash2 size="0.875rem" /> Delete note</Button></PopoverContent>
+            <PopoverContent align="end" className="note-action-menu"><Button variant="ghost" className="danger" onClick={() => void flush(note).then(() => onDelete(note))}><Trash2 size="0.875rem" /> Delete note</Button></PopoverContent>
           </Popover>
         </div>}
         <Button variant="outline" size="xs" onClick={() => void create()}><Plus size="0.9375rem" /> New note</Button>

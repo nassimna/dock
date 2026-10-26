@@ -5,17 +5,20 @@ import {
   type DesktopBridge,
 } from "@dock/contracts";
 
-const beforeUpdate = new Set<() => Promise<void>>();
+const beforeUpdate = new Map<() => Promise<void>, boolean>();
 const bridge: DesktopBridge = {
+  async setCaptureVisible(visible) {
+    await ipcRenderer.invoke("dock:capture-visibility", visible);
+  },
   moveFloating(x, y) {
     ipcRenderer.send("dock:move-floating", Math.round(x), Math.round(y));
   },
-  onBeforeUpdate(listener) {
-    beforeUpdate.add(listener);
+  onBeforeUpdate(listener, flushOnQuit = false) {
+    beforeUpdate.set(listener, flushOnQuit);
     return () => { beforeUpdate.delete(listener); };
   },
-  async prepareUpdate() {
-    await Promise.all([...beforeUpdate].map(listener => listener()));
+  async prepareUpdate(quitting = false) {
+    await Promise.all([...beforeUpdate].filter(([, flushOnQuit]) => !quitting || flushOnQuit).map(([listener]) => listener()));
   },
   async dispatch(command) {
     return snapshotSchema.parse(

@@ -21,6 +21,7 @@ import {
   syncCredentialsSchema,
   type Command,
   type Snapshot,
+  type StoreSnapshot,
   type WindowRole,
 } from "@dock/contracts";
 import { DockDatabase } from "./database";
@@ -55,6 +56,7 @@ let syncStopped = false;
 const sessionPath = join(dataDirectory, "sync-session.bin");
 let tray: Tray | null = null;
 let quitting = false;
+let preparingQuit = false;
 let shortcutRegistered = false;
 let notificationError = "";
 let reminderTimer: ReturnType<typeof setInterval> | undefined;
@@ -63,9 +65,9 @@ const topmostSupported = !(
   process.platform === "linux" && process.env.XDG_SESSION_TYPE === "wayland"
 );
 
-function snapshot(): Snapshot {
+function snapshot(store: StoreSnapshot = database.snapshot()): Snapshot {
   return {
-    ...database.snapshot(),
+    ...store,
     sync: sync.status(),
     syncFeatures: sync.statusFeatures(),
     update: updates.state(),
@@ -86,8 +88,7 @@ function snapshot(): Snapshot {
   };
 }
 
-function broadcast(): void {
-  const state = snapshot();
+function broadcast(state: Snapshot = snapshot()): void {
   for (const window of windows.values())
     window.webContents.send("dock:changed", state);
 }
@@ -108,7 +109,7 @@ function saveFloatingPosition(): void {
 
 function keepFloatingVisible(): void {
   const floating = windows.get("floating");
-  if (!quitting && floatingWanted && floating && database.snapshot().settings.floating.persistent) {
+  if (!quitting && floatingWanted && floating && database.settings().floating.persistent) {
     if (floating.isMinimized()) floating.restore();
     floating.showInactive();
   }
@@ -131,7 +132,7 @@ function showWindow(window: BrowserWindow, role: WindowRole): void {
     const anchor = floating.getBounds();
     const area = screen.getDisplayMatching(anchor).workArea;
     const { width, height } = window.getBounds();
-    const persistent = database.snapshot().settings.floating.persistent;
+    const persistent = database.settings().floating.persistent;
     let x = anchor.x + anchor.width - width;
     let y = anchor.y + anchor.height - height;
     if (persistent) {
@@ -163,16 +164,16 @@ function showWindow(window: BrowserWindow, role: WindowRole): void {
   if (role === "capture") window.webContents.send("dock:capture");
 }
 
-async function openWindow(role: WindowRole): Promise<BrowserWindow> {
+async function openWindow(role: WindowRole, announce = true): Promise<BrowserWindow> {
   const existing = windows.get(role);
   if (existing) {
     if (existing.isMinimized()) existing.restore();
     showWindow(existing, role);
-    broadcast();
+    if (announce && role !== "capture") broadcast();
     return existing;
   }
   const workArea = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
-  const style = database.snapshot().settings.floating;
+  const style = database.settings().floating;
   const size =
     role === "main"
       ? { width: Math.min(1160, workArea.width), height: Math.min(780, workArea.height), minWidth: Math.min(780, workArea.width), minHeight: Math.min(560, workArea.height) }
@@ -206,9 +207,9 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
     title: role === "main" ? appName : `${appName} ${role}`,
     icon: join(__dirname, "../../resources/app-icon.png"),
     backgroundColor: role === "floating" ? "#00000000" :
-      database.snapshot().settings.theme === "dark" ? "#202827" : "#ffffff",
+      database.settings().theme === "dark" ? "#202827" : "#ffffff",
     resizable: role !== "capture" && role !== "floating",
-    alwaysOnTop: topmostSupported && (role === "floating" || role === "mini" && database.snapshot().settings.miniPinned),
+    alwaysOnTop: topmostSupported && (role === "floating" || role === "mini" && database.settings().miniPinned),
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: true,
@@ -219,7 +220,7 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
   if (process.platform === "darwin" && role !== "capture" && role !== "floating")
     window.setWindowButtonVisibility(true);
   if (role === "capture" && topmostSupported)
-    window.setAlwaysOnTop(database.snapshot().settings.capturePinned);
+    window.setAlwaysOnTop(database.settings().capturePinned);
   if (role === "mini" || role === "floating")
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   if (role === "floating") {
@@ -265,11 +266,12 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
     }
     if (
       role === "capture" ||
-      (role === "main" && tray && database.snapshot().settings.closeToTray)
+      (role === "main" && tray && database.settings().closeToTray)
     ) {
       event.preventDefault();
       window.hide();
     } else if (role === "main") {
+      event.preventDefault();
       app.quit();
     }
   });
@@ -288,7 +290,7 @@ async function openWindow(role: WindowRole): Promise<BrowserWindow> {
     });
   }
   showWindow(window, role);
-  broadcast();
+  if (announce && role !== "capture") broadcast();
   return window;
 }
 
@@ -336,9 +338,9 @@ async function tick(): Promise<void> {
   if (checkingReminders || quitting) return;
   checkingReminders = true;
   try {
-    localServices.ensureDailyBackup();
-    await checkReminders(database, item => showNotification(`${appName} reminder`, item.title, item.id), new Date(), localServices.reminders);
-    if (!quitting) broadcast();
+    const backupChanged = localServices.ensureDailyBackup();
+    const remindersChanged = await checkReminders(database, item => showNotification(`${appName} reminder`, item.title, item.id), new Date(), localServices.reminders);
+    if (!quitting && (backupChanged || remindersChanged)) broadcast();
   } catch (error) {
     console.error("Dock reminder check failed:", error);
   } finally {
@@ -350,13 +352,14 @@ async function dispatch(
   command: Command,
   sender?: BrowserWindow,
 ): Promise<Snapshot> {
+  let store: StoreSnapshot | undefined;
   if (command.type === "backup.create" || command.type === "backup.restore" || command.type === "backup.import" ||
       command.type === "attachment.add" || command.type === "attachment.open" || command.type === "reminder.retry") {
     if (!sender) throw new Error("Backups, files, and reminder controls require the desktop UI.");
     if (command.type === "backup.create") localServices.createBackup();
     else if (command.type === "backup.restore") {
       localServices.restore(command.name);
-      sync.localChanged();
+      sync.localChanged(false);
     } else if (command.type === "backup.import") {
       const result = await dialog.showOpenDialog(sender, {
         title: command.format === "json" ? "Import Dock backup" : "Import Todoist CSV",
@@ -369,7 +372,7 @@ async function dispatch(
         const content = readFileSync(filename, "utf8");
         if (command.format === "json") localServices.importJson(content);
         else localServices.importTodoist(content, basename(filename, extname(filename)));
-        sync.localChanged();
+        sync.localChanged(false);
       }
     } else if (command.type === "attachment.add") {
       const result = await dialog.showOpenDialog(sender, {
@@ -378,7 +381,7 @@ async function dispatch(
       });
       if (!result.canceled && result.filePaths.length) {
         localServices.addAttachments(command.itemId, result.filePaths, command.commentId);
-        sync.localChanged();
+        sync.localChanged(false);
       }
     } else if (command.type === "attachment.open") {
       const error = await shell.openPath(localServices.attachmentPath(command.id));
@@ -420,12 +423,12 @@ async function dispatch(
     await sync.feature(command);
   } else if (command.type === "window") {
     if (command.action === "floating-reset") {
-      const window = await openWindow("floating");
+      const window = await openWindow("floating", false);
       const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
       const { width, height } = window.getBounds();
       window.setPosition(area.x + area.width - width - 24, area.y + area.height - height - 24);
     } else if (["main", "capture", "mini", "floating"].includes(command.action)) {
-      const window = await openWindow(command.action as WindowRole);
+      const window = await openWindow(command.action as WindowRole, false);
       if (command.action === "main" && command.view) window.webContents.send("dock:navigate", command.view);
     } else if (command.action === "export") {
       const result = await dialog.showSaveDialog({
@@ -455,7 +458,7 @@ async function dispatch(
       if (command.action === "quit") app.quit();
     }
   } else if (command.type === "settings.save") {
-    const previous = database.snapshot().settings;
+    const previous = database.settings();
     const changed = previous.shortcut !== command.settings.shortcut;
     if (
       changed &&
@@ -478,7 +481,7 @@ async function dispatch(
       );
     }
     try {
-      database.execute(command);
+      store = database.execute(command);
     } catch (error) {
       if (changed) globalShortcut.unregister(command.settings.shortcut);
       throw error;
@@ -505,11 +508,12 @@ async function dispatch(
     if (previous.automaticUpdates !== command.settings.automaticUpdates)
       updates.configure(command.settings.automaticUpdates);
   } else {
-    database.execute(command);
-    if (command.type.startsWith("item.")) sync.localChanged();
+    store = database.execute(command);
+    if (command.type.startsWith("item.")) sync.localChanged(false);
   }
-  if (command.type !== "snapshot") broadcast();
-  return snapshot();
+  const state = snapshot(store);
+  if (command.type !== "snapshot") broadcast(state);
+  return state;
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -548,6 +552,14 @@ if (!app.requestSingleInstanceLock()) {
           sync.restoreFailed();
         }
       }
+      ipcMain.handle("dock:capture-visibility", async (event, visible: unknown) => {
+        const sender = [...windows.values()].find(window => window.webContents === event.sender);
+        if (!sender || event.senderFrame !== sender.webContents.mainFrame)
+          throw new Error("Unknown command sender.");
+        if (typeof visible !== "boolean") throw new Error("Choose whether to show or hide quick capture.");
+        if (visible) await openWindow("capture");
+        else windows.get("capture")?.hide();
+      });
       ipcMain.handle("dock:command", async (event, input: unknown) => {
         const sender = [...windows.values()].find(
           (window) => window.webContents === event.sender,
@@ -568,7 +580,7 @@ if (!app.requestSingleInstanceLock()) {
       stopLocalApi = await startLocalApi(directory, (command) =>
         dispatch(command),
       );
-      const settings = database.snapshot().settings;
+      const settings = database.settings();
       shortcutRegistered = globalShortcut.register(
         settings.shortcut,
         () => void openWindow("capture"),
@@ -615,7 +627,19 @@ if (!app.requestSingleInstanceLock()) {
     if (!tray) app.quit();
   });
   app.on("before-quit", (event) => {
-    quitting = true;
+    if (!quitting) {
+      event.preventDefault();
+      if (preparingQuit) return;
+      preparingQuit = true;
+      void Promise.all([...windows.values()].filter(window => !window.webContents.isLoadingMainFrame())
+        .map(window => window.webContents.executeJavaScript("window.dock?.prepareUpdate(true)")))
+        .then(() => { quitting = true; app.quit(); })
+        .catch(error => {
+          preparingQuit = false;
+          void dialog.showMessageBox({ type: "warning", message: "Dock is still open", detail: error instanceof Error ? error.message : String(error) });
+        });
+      return;
+    }
     if (floatingPositionTimer) saveFloatingPosition();
     for (const notification of activeNotifications) notification.close();
     updates?.stop();

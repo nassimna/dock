@@ -36,15 +36,19 @@ export class LocalServices {
     };
   }
 
-  ensureDailyBackup(now = new Date()): void {
+  ensureDailyBackup(now = new Date()): boolean {
     const day = localDate(now);
-    if (this.backupDay === day) return;
+    if (this.backupDay === day) return false;
     try {
       const todayExists = this.state().backups.some(backup => localDate(new Date(backup.createdAt)) === day);
       if (!todayExists) this.createBackup(now);
       this.backupDay = day;
+      return !todayExists;
     } catch (error) {
-      this.message = `Automatic backup failed: ${error instanceof Error ? error.message : "Could not write the backup."}`;
+      const message = `Automatic backup failed: ${error instanceof Error ? error.message : "Could not write the backup."}`;
+      const changed = this.message !== message;
+      this.message = message;
+      return changed;
     }
   }
 

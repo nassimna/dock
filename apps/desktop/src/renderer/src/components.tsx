@@ -44,6 +44,9 @@ export function dueLabel(item: Item): string {
 export function TaskRow({
   item,
   snapshot,
+  note,
+  parent,
+  children,
   onChange,
   onOpen,
   onToggle,
@@ -55,6 +58,9 @@ export function TaskRow({
 }: {
   item: Item;
   snapshot: Snapshot;
+  note?: Item;
+  parent?: Item;
+  children: Item[];
   /** Saves a quick edit; the message describes it in the Undo notice. */
   onChange: (item: Item, changes: Partial<Item>, message: string) => void;
   onOpen: (item: Item) => void;
@@ -66,7 +72,6 @@ export function TaskRow({
   /** Shown under its parent, so the parent title is omitted. */
   nested?: boolean;
 }) {
-  const note = snapshot.items.find((note) => note.id === item.linkedNoteId);
   const done = completion ? !item.done : item.done;
   const [actionsOpen, setActionsOpen] = useState(false);
   const [actionView, setActionView] = useState<"actions" | "date" | "project">("actions");
@@ -74,7 +79,6 @@ export function TaskRow({
   const [scheduled, setScheduled] = useState(() => new Date(item.scheduledAt ?? todaySchedule()));
   const [priorityOpen, setPriorityOpen] = useState(false);
   const shared = snapshot.syncFeatures.projects.some(project => project.id === item.task.projectId);
-  const parent = item.task.parentId && !nested ? snapshot.items.find(parent => parent.id === item.task.parentId) : undefined;
   function schedule(value: string | null) {
     onChange(item, { scheduledAt: value, recurrence: value ? item.recurrence : "none" },
       value ? `Scheduled ${dueLabel({ ...item, scheduledAt: value })}` : item.recurrence !== "none" ? "Date and repeat removed" : "Date removed");
@@ -115,7 +119,7 @@ export function TaskRow({
           {parent && <span className="task-parent"><CornerDownRight size="0.75rem" />{parent.title}</span>}
           {item.task.priority < 4 && <span className="priority-text"><Flag size="0.6875rem" />P{item.task.priority}</span>}
           {item.tags.map(tag => <span className="task-label" key={tag}>@{tag}</span>)}
-          {snapshot.items.some(child => child.task.parentId === item.id) && <span><GitBranch size="0.75rem" />{snapshot.items.filter(child => child.task.parentId === item.id && child.done).length}/{snapshot.items.filter(child => child.task.parentId === item.id).length}</span>}
+          {children.length > 0 && <span><GitBranch size="0.75rem" />{children.filter(child => child.done).length}/{children.length}</span>}
           {item.task.comments.length > 0 && <span><MessageSquare size="0.75rem" />{item.task.comments.length}</span>}
           {item.task.deadline && <span className={localDate(new Date(item.task.deadline)) < localDate() && !item.done ? 'overdue' : ''}>Deadline {new Date(item.task.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
           {item.task.assignee && <span>{item.task.assignee}</span>}

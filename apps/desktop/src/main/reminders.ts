@@ -46,8 +46,9 @@ export async function checkReminders(
   notify: (item: Item) => boolean | Promise<boolean>,
   now = new Date(),
   journal = new ReminderJournal(),
-): Promise<void> {
-  if (isQuiet(database.snapshot().settings, now)) return;
+): Promise<boolean> {
+  if (isQuiet(database.settings(), now)) return false;
+  let changed = false;
   const scheduled = database.due(now);
   const events = scheduled.map(item => ({ item, dueAt: item.scheduledAt! }));
   for (const item of database.snapshot().items) {
@@ -60,14 +61,17 @@ export async function checkReminders(
   for (const { item, dueAt } of events) {
     const key = `${item.id}:${dueAt}`;
     const previous = journal.get(key);
-    if (previous?.status === "pending" && previous.attempts >= 3 && previous.nextAttemptAt && previous.nextAttemptAt <= now.toISOString())
+    if (previous?.status === "pending" && previous.attempts >= 3 && previous.nextAttemptAt && previous.nextAttemptAt <= now.toISOString()) {
+      changed = true;
       journal.put({ ...previous, status: "failed", nextAttemptAt: null, error: "Dock stopped before display was confirmed. Retry this reminder manually." });
+    }
     if (previous?.status === "shown" || (previous?.attempts ?? 0) >= 3 ||
         (previous?.nextAttemptAt && previous.nextAttemptAt > now.toISOString())) continue;
     const entry: ReminderLog = {
       key, itemId: item.id, title: item.title, dueAt, status: "pending", attempts: (previous?.attempts ?? 0) + 1,
       lastAttemptAt: now.toISOString(), nextAttemptAt: new Date(now.getTime() + 120_000).toISOString(), error: "",
     };
+    changed = true;
     journal.put(entry);
     try {
       if (!await notify(item)) throw new Error("The operating system did not confirm displaying the notification. Check notification permissions.");
@@ -78,4 +82,5 @@ export async function checkReminders(
         error: error instanceof Error ? error.message : "Notification could not be displayed." });
     }
   }
+  return changed;
 }

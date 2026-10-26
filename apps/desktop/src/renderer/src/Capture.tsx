@@ -70,7 +70,7 @@ export function Capture({ dispatch, act, snapshot }: { dispatch: Dispatch; snaps
       setShowSchedule(false); setManual(new Set()); setIgnored([]);
       if (!keepOpen) {
         setShowOptions(false);
-        await dispatch({ type: "window", action: "hide" });
+        await window.dock.setCaptureVisible(false);
       }
     } catch (error) {
       setFailure(error instanceof Error ? error.message : 'Could not capture the item.');

@@ -305,3 +305,23 @@ test("removing a board column moves its tasks to No section and keeps hidden col
     rmSync(directory, { recursive: true });
   }
 });
+
+
+test("board reorder is atomic, revision checked and preserves task fields", () => {
+  const database = new DockDatabase(":memory:");
+  const projectId = randomUUID(), sectionId = randomUUID();
+  try {
+    database.execute({ type: "workspace.save", workspace: workspaceSchema.parse({ projects: [{ id: projectId, name: "Board", sections: [{ id: sectionId, name: "Queue" }] }] }) });
+    const first = save(database, { kind: "task", title: "First", body: "Keep context", task: { projectId, sectionId, order: 0 } }).items[0]!;
+    const second = save(database, { kind: "task", title: "Second", task: { projectId, sectionId, order: 0 } }).items.find(item => item.id !== first.id)!;
+    const reorder = { type: "item.reorder" as const, projectId, sectionId: null, ids: [second.id, first.id], expectedRevisions: { [first.id]: first.revision, [second.id]: second.revision } };
+    assert.throws(() => database.execute({ ...reorder, expectedRevisions: { ...reorder.expectedRevisions, [first.id]: 99 } }), /changed/);
+    assert.ok(database.snapshot().items.every(item => item.task.sectionId === sectionId && item.revision === 1));
+    const result = database.execute(reorder);
+    assert.equal(result.items.find(item => item.id === first.id)!.task.order, 1);
+    assert.equal(result.items.find(item => item.id === second.id)!.task.order, 0);
+    assert.ok(result.items.every(item => item.task.sectionId === null && item.revision === 2));
+    assert.equal(result.items.find(item => item.id === first.id)!.body, "Keep context");
+    assert.throws(() => commandSchema.parse({ ...reorder, ids: [first.id, first.id] }), /only once/);
+  } finally { database.close(); }
+});

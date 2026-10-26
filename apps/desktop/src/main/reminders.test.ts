@@ -102,3 +102,15 @@ test("display confirmation for an old schedule cannot acknowledge a rescheduled 
     assert.equal(database.due(new Date("2026-10-25T13:00:00Z")).length, 1);
   } finally { database.close(); }
 });
+
+
+test("unchanged reminder checks do not request a window update", async () => {
+  const database = new DockDatabase(":memory:");
+  const now = new Date("2026-10-26T12:00:00Z"), journal = new ReminderJournal();
+  try {
+    assert.equal(await checkReminders(database, () => true, now, journal), false);
+    database.execute({ type: "item.save", item: itemInputSchema.parse({ kind: "task", title: "Due", scheduledAt: now.toISOString() }) }, now);
+    assert.equal(await checkReminders(database, () => true, now, journal), true);
+    assert.equal(await checkReminders(database, () => true, now, journal), false);
+  } finally { database.close(); }
+});

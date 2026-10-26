@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { localDate, type Item, type Project, type Snapshot, type Workspace } from '@dock/contracts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ArrowLeft, ArrowRight, Columns3, EyeOff, MessageSquare, MoreHorizontal, Pencil, Plus, Trash2 } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { dueLabel, Empty } from './components';
@@ -16,10 +17,34 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
   const sections = columns.filter(section => !hidden.includes(section.id ?? 'none'));
   const shared = snapshot.syncFeatures.projects.find(shared => shared.id === project.id);
   const canManage = !shared || shared.ownerEmail === snapshot.sync.email;
+  const [focusCard, setFocusCard] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusCard) return;
+    const button = document.querySelector<HTMLButtonElement>(`.board-card[data-task-id="${focusCard}"] .board-card-title button[title]`);
+    if (button) { button.focus(); setFocusCard(null); }
+  }, [focusCard, items]);
   const [drop, setDrop] = useState<{ sectionId: string | null; index: number } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [actionsColumn, setActionsColumn] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const columnTrigger = useRef<HTMLButtonElement>(null);
+  const addColumnButton = useRef<HTMLButtonElement>(null);
+  const deletingColumn = project.sections.find(section => section.id === confirmDelete);
+  const affectedTasks = confirmDelete ? snapshot.items.filter(item => item.kind === 'task' && item.task.projectId === project.id && item.task.sectionId === confirmDelete).length : 0;
+  const childCounts = useMemo(() => {
+    const counts = new Map<string, { total: number; done: number }>();
+    for (const child of snapshot.items) {
+      if (!child.task.parentId) continue;
+      const count = counts.get(child.task.parentId) ?? { total: 0, done: 0 };
+      count.total++;
+      if (child.done) count.done++;
+      counts.set(child.task.parentId, count);
+    }
+    return counts;
+  }, [snapshot.items]);
   const column = (sectionId: string | null) => items.filter(item => item.task.sectionId === sectionId);
   async function saveProject(next: Project) {
     await dispatch({ type: 'workspace.save', workspace: { ...snapshot.workspace, projects: snapshot.workspace.projects.map(item => item.id === next.id ? next : item) } });
@@ -38,14 +63,30 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
     if (name.trim() && name.trim() !== project.sections.find(section => section.id === id)?.name)
       save({ sections: project.sections.map(section => section.id === id ? { ...section, name: name.trim() } : section) });
   }
-  /** Places the card at `index` in the section and renumbers that column's manual order. */
   async function move(item: Item, sectionId: string | null, index: number) {
-    const others = column(sectionId).filter(card => card.id !== item.id);
+    const current = column(sectionId);
+    const others = current.filter(card => card.id !== item.id);
     const ordered = [...others.slice(0, index), item, ...others.slice(index)];
-    for (const [order, card] of ordered.entries()) {
-      const current = snapshot.items.find(saved => saved.id === card.id)!;
-      if (current.task.order === order && current.task.sectionId === sectionId) continue;
-      await dispatch({ type: 'item.save', item: { ...current, expectedRevision: current.revision, task: { ...current.task, sectionId, order } } });
+    if (item.task.sectionId === sectionId && ordered.every((card, position) => card.id === current[position]?.id)) return;
+    await dispatch({ type: 'item.reorder', projectId: project.id, sectionId,
+      ids: ordered.map(card => card.id),
+      expectedRevisions: Object.fromEntries(ordered.map(card => [card.id, card.revision])),
+    });
+  }
+  async function deleteColumn() {
+    if (!deletingColumn || !canManage) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await saveProject({ ...project,
+        sections: project.sections.filter(section => section.id !== deletingColumn.id),
+        hiddenColumns: hidden.filter(id => id !== deletingColumn.id && (!affectedTasks || id !== 'none')),
+      });
+      setConfirmDelete(null);
+    } catch (error) {
+      setDeleteError(errorMessage(error));
+    } finally {
+      setDeleting(false);
     }
   }
   function moveByKey(event: React.KeyboardEvent, item: Item) {
@@ -56,8 +97,7 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
     const target = event.key === 'ArrowLeft' ? sections[sectionIndex - 1] : event.key === 'ArrowRight' ? sections[sectionIndex + 1] : sections[sectionIndex];
     if (!target) return;
     const nextIndex = target.id !== item.task.sectionId ? column(target.id).length : Math.max(0, index + (event.key === 'ArrowUp' ? -1 : 1));
-    const button = event.currentTarget as HTMLElement;
-    void move(item, target.id, nextIndex).then(() => button.focus(), () => { });
+    void move(item, target.id, nextIndex).then(() => setFocusCard(item.id), () => { });
   }
   return <>
     <div className="list-toolbar">
@@ -116,11 +156,11 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
           <Button variant="ghost" size="icon-xs" aria-label={`Add task in ${section.name}`} onClick={() => onAdd(section.id)}>
             <Plus size="1rem" />
           </Button>
-          <Popover onOpenChange={() => setConfirmDelete(null)}>
+          <Popover open={actionsColumn === (section.id ?? 'none')} onOpenChange={open => setActionsColumn(open ? section.id ?? 'none' : null)}>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon-xs" aria-label={`Column actions for ${section.name}`} disabled={!canManage}><MoreHorizontal size="1rem" /></Button>
+              <Button variant="ghost" size="icon-xs" aria-label={`Column actions for ${section.name}`} disabled={!canManage} onClick={event => { columnTrigger.current = event.currentTarget; }}><MoreHorizontal size="1rem" /></Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="task-actions-menu" aria-label={`Column actions for ${section.name}`}>
+            <PopoverContent align="end" className="task-actions-menu" aria-label={`Column actions for ${section.name}`} onCloseAutoFocus={event => { if (confirmDelete) event.preventDefault(); }}>
               <strong className="task-actions-heading">{section.name}</strong>
               {section.id && <>
                 <Button variant="ghost" size="sm" className="task-menu-action" onClick={() => setRenaming(section.id)}><Pencil size="0.875rem" />Rename</Button>
@@ -129,20 +169,19 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
               </>}
               <Button variant="ghost" size="sm" className="task-menu-action" onClick={() => setHidden(section.id, true)}><EyeOff size="0.875rem" />Hide column</Button>
               {section.id && <Button variant="ghost" size="sm" className="task-menu-action danger"
-                onClick={() => confirmDelete === section.id
-                  ? save({ sections: project.sections.filter(item => item.id !== section.id), hiddenColumns: hidden.filter(id => id !== section.id) })
-                  : setConfirmDelete(section.id)}>
-                <Trash2 size="0.875rem" />{confirmDelete === section.id ? (cards.length ? `Delete and move ${cards.length} to No section` : 'Confirm delete') : 'Delete column'}
+                onClick={() => { setActionsColumn(null); setDeleteError(''); setConfirmDelete(section.id); }}>
+                <Trash2 size="0.875rem" />Delete column
               </Button>}
             </PopoverContent>
           </Popover>
         </div>
         {cards.map((item, index) => {
-          const children = snapshot.items.filter(child => child.task.parentId === item.id);
+          const children = childCounts.get(item.id);
           return <div key={item.id}>
             {marker(index)}
             <article
               className={`board-card priority-${item.task.priority}`}
+              data-task-id={item.id}
               draggable
               onDragStart={event => event.dataTransfer.setData('text/plain', item.id)}
               onDragOver={event => {
@@ -159,7 +198,7 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
               <div className="task-meta">
                 {item.scheduledAt && <span>{dueLabel(item)}</span>}
                 {item.tags.map(tag => <span className="task-label" key={tag}>@{tag}</span>)}
-                {children.length > 0 && <span>{children.filter(child => child.done).length}/{children.length} subtasks</span>}
+                {children && <span>{children.done}/{children.total} subtasks</span>}
                 {item.task.comments.length > 0 && <span><MessageSquare size="0.75rem" /> {item.task.comments.length}</span>}
                 {item.task.assignee && <span>{item.task.assignee}</span>}
               </div>
@@ -182,9 +221,27 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
             save({ sections: [...project.sections, { id: crypto.randomUUID(), name: event.currentTarget.value.trim() }] });
             setAdding(false);
           }
-        }} /> : <Button variant="ghost" size="xs" onClick={() => setAdding(true)}><Plus size="0.8125rem" />Add column</Button>}
+        }} /> : <Button ref={addColumnButton} variant="ghost" size="xs" onClick={() => setAdding(true)}><Plus size="0.8125rem" />Add column</Button>}
     </div>}
     </div>
+    <Dialog open={confirmDelete !== null} onOpenChange={open => { if (!open && !deleting) setConfirmDelete(null); }}>
+      <DialogContent onCloseAutoFocus={event => {
+        event.preventDefault();
+        (columnTrigger.current?.isConnected ? columnTrigger.current : addColumnButton.current)?.focus();
+      }}>
+        <DialogHeader>
+          <DialogTitle>Delete {deletingColumn?.name ?? 'this'} column?</DialogTitle>
+          <DialogDescription>
+            {affectedTasks ? `${affectedTasks} task${affectedTasks === 1 ? '' : 's'} will move to No section, including completed tasks and subtasks. No tasks will be deleted.` : 'This empty column will be removed. No tasks will be deleted.'}
+          </DialogDescription>
+        </DialogHeader>
+        {deleteError && <p role="alert">{deleteError}</p>}
+        <DialogFooter>
+          <Button variant="outline" disabled={deleting} onClick={() => setConfirmDelete(null)}>Cancel</Button>
+          <Button variant="destructive" disabled={deleting || !canManage} onClick={() => void deleteColumn()}>{deleting ? 'Deleting…' : 'Delete column'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </>;
 }
 

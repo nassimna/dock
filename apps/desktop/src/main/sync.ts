@@ -136,10 +136,10 @@ export class DockSync {
     this.database.applyPrivateProjects(result.projects, result.version);
   }
 
-  localChanged(): void {
+  localChanged(notify = true): void {
     if (!this.credentials) return;
     if (this.phase !== "syncing") this.phase = "pending";
-    this.changed();
+    if (notify) this.changed();
     this.schedule(500);
   }
 

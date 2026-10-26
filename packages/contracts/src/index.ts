@@ -334,6 +334,10 @@ export const commandSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sync.now") }),
   z.object({ type: z.literal("sync.disconnect") }),
   z.object({ type: z.literal("item.save"), item: itemInputSchema }),
+  z.object({ type: z.literal("item.reorder"), projectId: z.uuid(), sectionId: z.uuid().nullable(),
+    ids: z.array(z.uuid()).min(1).max(10000).refine(ids => new Set(ids).size === ids.length, "Each task may appear only once."),
+    expectedRevisions: z.record(z.string(), z.number().int().positive()),
+  }),
   z.object({ type: z.literal("item.toggle"), id: z.uuid() }),
   z.object({ type: z.literal("item.complete"), id: z.uuid() }),
   z.object({ type: z.literal("item.priority"), id: z.uuid() }),
@@ -419,14 +423,15 @@ export function parseCommand(input: unknown): Command {
 }
 
 export interface DesktopBridge {
+  setCaptureVisible(visible: boolean): Promise<void>;
   dispatch(command: Command): Promise<Snapshot>;
   moveFloating(x: number, y: number): void;
   onChanged(listener: (snapshot: Snapshot) => void): () => void;
   onCapture(listener: () => void): () => void;
   onNavigate(listener: (view: "today" | "all" | "starred" | "settings") => void): () => void;
-  onBeforeUpdate(listener: () => Promise<void>): () => void;
+  onBeforeUpdate(listener: () => Promise<void>, flushOnQuit?: boolean): () => void;
   onOpenTask(listener: (id: string) => void): () => void;
-  prepareUpdate(): Promise<void>;
+  prepareUpdate(quitting?: boolean): Promise<void>;
 }
 
 export function localDate(date = new Date()): string {

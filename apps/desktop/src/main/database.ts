@@ -109,9 +109,6 @@ export class DockDatabase {
         "SELECT * FROM items WHERE deleted_at IS NULL ORDER BY created_at DESC, id",
       )
       .all();
-    const settings = this.db
-      .prepare("SELECT value FROM settings WHERE key = 'preferences'")
-      .get();
     return {
       undo: this.undoReceipt ? { token: this.undoReceipt.token, action: this.undoReceipt.action, count: this.undoReceipt.count } : null,
       items: rows.map((row) => this.item(row as Row)).filter(item => !hidden.has(item.task.projectId ?? "")),
@@ -119,10 +116,13 @@ export class DockDatabase {
       deletedItems: this.db.prepare("SELECT * FROM items WHERE deleted_at >= ? ORDER BY deleted_at DESC")
         .all(new Date(Date.now() - 30 * 86400_000).toISOString()).map(row => ({ ...this.item(row as Row), deletedAt: String(row.deleted_at) }))
         .filter(item => !hidden.has(item.task.projectId ?? "")),
-      settings: settingsSchema.parse(
-        settings ? JSON.parse(String(settings.value)) : {},
-      ),
+      settings: this.settings(),
     };
+  }
+
+  settings() {
+    const row = this.db.prepare("SELECT value FROM settings WHERE key = 'preferences'").get();
+    return settingsSchema.parse(row ? JSON.parse(String(row.value)) : {});
   }
 
   workspace(): Workspace {
@@ -250,6 +250,25 @@ export class DockDatabase {
             tags: task.tags, task: { ...task.task, projectId: command.projectId, sectionId: null, parentId: null,
               comments: [], reminders: [], assignee: "" } }) }, now);
         }
+      } else if (command.type === "item.reorder") {
+        const project = this.workspace().projects.find(project => project.id === command.projectId);
+        if (!project || this.hiddenProjectIds().includes(project.id)) throw new Error("This project is no longer available.");
+        if (command.sectionId && !project.sections.some(section => section.id === command.sectionId))
+          throw new Error("This column is no longer available.");
+        const items = command.ids.map(id => {
+          const row = this.db.prepare("SELECT * FROM items WHERE id = ? AND deleted_at IS NULL").get(id);
+          if (!row || row.kind !== "task" || row.revision !== command.expectedRevisions[id])
+            throw new Error("A task changed. Refresh the board before reordering.");
+          const item = this.item(row as Row);
+          if (item.task.projectId !== project.id || item.task.parentId || item.done)
+            throw new Error("Choose open cards from this project.");
+          return item;
+        });
+        const update = this.db.prepare("UPDATE items SET task_properties = ?, updated_at = ?, revision = revision + 1 WHERE id = ?");
+        items.forEach((item, order) => {
+          if (item.task.order !== order || item.task.sectionId !== command.sectionId)
+            update.run(JSON.stringify({ ...item.task, sectionId: command.sectionId, order }), now.toISOString(), item.id);
+        });
       } else if (command.type === "item.bulk") {
         const ids = [...new Set(command.ids)];
         for (const id of ids) {
@@ -315,7 +334,7 @@ export class DockDatabase {
     }
   }
 
-  private executeItem(command: Exclude<DataCommand, { type: "snapshot" | "settings.save" | "workspace.save" | "item.bulk" | "template.apply" | "item.undo" | "item.purge" }>, now: Date): void {
+  private executeItem(command: Exclude<DataCommand, { type: "snapshot" | "settings.save" | "workspace.save" | "item.bulk" | "item.reorder" | "template.apply" | "item.undo" | "item.purge" }>, now: Date): void {
     const timestamp = now.toISOString();
     if (command.type === "item.save") {
       const input = command.item;
