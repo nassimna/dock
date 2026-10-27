@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { commandSchema, taskPropertiesSchema, workspaceSchema, syncItemSchema, type ItemInput, type DataCommand } from "@dock/contracts";
 import { DockDatabase } from "./database.ts";
-import { schema, syncSchema, notesSchema } from "./schema.ts";
+import { schema, syncSchema, notesSchema, tasksSchema } from "./schema.ts";
 
 const now = new Date("2026-10-25T12:00:00Z");
 function dataCommand(input: unknown): DataCommand {
@@ -40,6 +40,30 @@ test("v3 migration preserves important tasks, rich notes and completion history"
     assert.equal(state.items.find(item => item.id === noteId)?.noteStyle.font, "serif");
     assert.equal(state.workspace.goals.daily, 5);
   } finally { database.close(); rmSync(directory, { recursive: true }); }
+});
+
+test("v4 migration indexes task parents and preserves data across reopening", () => {
+  const directory = mkdtempSync(join(resolve(".validation"), "task-index-migration-"));
+  const filename = join(directory, "dock.sqlite");
+  const id = randomUUID();
+  const old = new DatabaseSync(filename);
+  old.exec(schema + syncSchema + notesSchema + tasksSchema);
+  old.prepare("INSERT INTO items(id,kind,title,space,created_at,updated_at) VALUES(?,'task','Keep this task','Inbox',?,?)")
+    .run(id, now.toISOString(), now.toISOString());
+  old.close();
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const database = new DockDatabase(filename);
+      try { assert.equal(database.snapshot().items.find(item => item.id === id)?.title, "Keep this task"); }
+      finally { database.close(); }
+    }
+    const raw = new DatabaseSync(filename);
+    try {
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 5);
+      assert.ok(raw.prepare("EXPLAIN QUERY PLAN SELECT id FROM items WHERE json_extract(task_properties, '$.parentId') = ?").all(id)
+        .some(row => String(row.detail).includes("items_parent")));
+    } finally { raw.close(); }
+  } finally { rmSync(directory, { recursive: true }); }
 });
 
 test("task properties, sections, subtasks and bulk edits persist with atomic revision checks", () => {
@@ -196,6 +220,28 @@ test("one bulk Undo restores changed descendants and preserves earlier completed
     assert.equal(recovered.items.find(item => item.id === doneChild.id)!.done, true);
     assert.equal(recovered.items.some(item => item.id === parent.id), true);
     assert.equal(recovered.items.some(item => item.id === other.id), true);
+  } finally { database.close(); }
+});
+
+test("bulk Undo includes recurring descendants and new occurrences while preserving unrelated completed tasks", () => {
+  const database = new DockDatabase(":memory:");
+  try {
+    const parent = save(database, { kind: "task", title: "Daily parent", scheduledAt: now.toISOString(), recurrence: "daily" }).items[0]!;
+    const child = save(database, { kind: "task", title: "Daily child", scheduledAt: now.toISOString(), recurrence: "daily", task: { parentId: parent.id } })
+      .items.find(item => item.title === "Daily child")!;
+    const selected = save(database, { kind: "task", title: "Selected" }).items.find(item => item.title === "Selected")!;
+    const unrelated = save(database, { kind: "task", title: "Already done" }).items.find(item => item.title === "Already done")!;
+    database.execute({ type: "item.complete", id: unrelated.id }, now);
+    const originalIds = new Set([parent.id, child.id, selected.id, unrelated.id]);
+    const completed = database.execute(dataCommand({ type: "item.bulk", ids: [parent.id, selected.id], action: "complete" }), now);
+    const occurrences = completed.items.filter(item => !originalIds.has(item.id));
+    assert.equal(occurrences.length, 2);
+    assert.equal(completed.undo?.count, 3);
+    const restored = database.execute({ type: "item.undo", token: completed.undo!.token }, now);
+    assert.equal(restored.items.length, 4);
+    assert.ok([parent.id, child.id, selected.id].every(id => restored.items.find(item => item.id === id)?.done === false));
+    assert.equal(restored.items.find(item => item.id === unrelated.id)?.done, true);
+    assert.ok(occurrences.every(item => restored.deletedItems.some(deleted => deleted.id === item.id)));
   } finally { database.close(); }
 });
 

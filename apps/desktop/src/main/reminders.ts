@@ -51,8 +51,7 @@ export async function checkReminders(
   let changed = false;
   const scheduled = database.due(now);
   const events = scheduled.map(item => ({ item, dueAt: item.scheduledAt! }));
-  for (const item of database.snapshot().items) {
-    if (item.kind !== "task" || item.done) continue;
+  for (const item of database.reminderItems()) {
     for (const reminder of item.task.reminders) {
       const dueAt = new Date(reminder).toISOString();
       if (dueAt <= now.toISOString() && !events.some(event => event.item.id === item.id && event.dueAt === dueAt)) events.push({ item, dueAt });

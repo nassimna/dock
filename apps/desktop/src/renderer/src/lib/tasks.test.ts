@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { itemSchema, localDate, workspaceSchema } from '@dock/contracts';
-import { parseTaskText, compileFilter, compareTasks, recurrenceLabel, matchesSearch } from './tasks.ts';
+import { parseTaskText, compileFilter, compileSearch, taskComparator, recurrenceLabel } from './tasks.ts';
 
 const projectId = randomUUID();
 const workspace = workspaceSchema.parse({ projects: [{ id: projectId, name: 'Release plan' }] });
@@ -16,12 +16,24 @@ test('task ordering keeps due work visible ahead of unscheduled ideas, then orde
   const tasks = [task('Idea', 4, null), task('Tomorrow urgent', 1, new Date(2026, 9, 26, 9).toISOString()),
     task('Due normal', 4, new Date(2026, 9, 25, 9).toISOString()), task('Due urgent', 1, new Date(2026, 9, 25, 10).toISOString()),
     task('Overdue urgent', 1, new Date(2026, 9, 24, 10).toISOString())];
-  assert.deepEqual(tasks.sort((a, b) => compareTasks(a, b, '2026-10-25')).map(item => item.title),
+  assert.deepEqual(tasks.sort(taskComparator('2026-10-25')).map(item => item.title),
     ['Overdue urgent', 'Due urgent', 'Due normal', 'Tomorrow urgent', 'Idea']);
+  const tomorrow = tasks.find(item => item.title === 'Tomorrow urgent')!;
+  const normal = tasks.find(item => item.title === 'Due normal')!;
+  const compare = taskComparator('2026-10-25');
+  assert.ok(compare(tomorrow, normal) > 0);
+  tomorrow.scheduledAt = new Date(2026, 9, 24, 9).toISOString();
+  assert.ok(compare(tomorrow, normal) < 0);
+  tomorrow.scheduledAt = new Date(2026, 9, 26, 9).toISOString();
+  assert.ok(taskComparator('2026-10-26')(tomorrow, normal) < 0);
 });
 test('capture resolves local date, named project, priority, labels and duration without altering ordinary words', () => {
   const parsed = parseTaskText('Write notes next Tue 9am #"Release plan" p2 @writing for 45m', workspace, now);
   assert.equal(parsed.title, 'Write notes');
+  const plain = parseTaskText('Write plain capture task p2 @work', workspace, now);
+  assert.equal(plain.title, 'Write plain capture task');
+  assert.deepEqual(plain.task, { priority: 2 });
+  assert.deepEqual(plain.tags, ['work']);
   assert.equal(localDate(new Date(parsed.scheduledAt!)), '2026-10-27');
   assert.equal(new Date(parsed.scheduledAt!).getHours(), 9);
   assert.deepEqual(parsed.task, { projectId, priority: 2, durationMinutes: 45 });
@@ -54,6 +66,11 @@ test('repeat labels read naturally and search covers labels, comments and projec
       comments: [{ id: randomUUID(), body: 'Use the blue can', createdAt: '2026-10-25T00:00:00.000Z' }] } });
   assert.equal(recurrenceLabel(item), 'Every 3 days after completion');
   assert.equal(recurrenceLabel({ ...item, recurrence: 'weekdays' }), 'Every weekday');
-  for (const query of ['@home', 'blue can', 'release plan']) assert.equal(matchesSearch(item, query, workspace), true);
-  assert.equal(matchesSearch(item, 'missing', workspace), false);
+  for (const query of ['@home', 'blue can', 'release plan']) assert.equal(compileSearch(query, workspace)(item), true);
+  assert.equal(compileSearch('missing', workspace)(item), false);
+  const search = compileSearch('  WATER  ', workspace);
+  assert.equal(search(item), true);
+  assert.equal(search({ ...item, title: 'Different title' }), false);
+  assert.equal(compileSearch('renamed project', { ...workspace, projects: workspace.projects.map(project => ({ ...project, name: 'Renamed project' })) })(item), true);
+  assert.equal(compileSearch('release plan', workspace)({ ...item, task: { ...item.task, projectId: null } }), false);
 });

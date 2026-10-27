@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
@@ -29,6 +29,19 @@ export function ActionButton({ className, ...props }: ButtonProps & { "aria-labe
   );
 }
 
+let labelFormatters: { date: Intl.DateTimeFormat; time: Intl.DateTimeFormat } | undefined;
+function taskDateFormatters() {
+  if (!labelFormatters) {
+    labelFormatters = {
+      date: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }),
+      time: new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }),
+    };
+    // Release at the next microtask so later locale and timezone changes stay fresh.
+    queueMicrotask(() => { labelFormatters = undefined; });
+  }
+  return labelFormatters;
+}
+
 export function dueLabel(item: Item): string {
   if (!item.scheduledAt) return "No date";
   const date = new Date(item.scheduledAt);
@@ -37,11 +50,11 @@ export function dueLabel(item: Item): string {
   const label =
     day === today
       ? "Today"
-      : date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  return `${day < today && !item.done ? "Overdue · " : ""}${label} · ${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+      : taskDateFormatters().date.format(date);
+  return `${day < today && !item.done ? "Overdue · " : ""}${label} · ${taskDateFormatters().time.format(date)}`;
 }
 
-export function TaskRow({
+export const TaskRow = memo(function TaskRow({
   item,
   snapshot,
   note,
@@ -60,7 +73,11 @@ export function TaskRow({
   snapshot: Snapshot;
   note?: Item;
   parent?: Item;
-  children: Item[];
+  children: readonly Item[];
+  /** Ambient date context invalidates rows even when task data is unchanged. */
+  clock: number;
+  locale: string;
+  timeZone: string;
   /** Saves a quick edit; the message describes it in the Undo notice. */
   onChange: (item: Item, changes: Partial<Item>, message: string) => void;
   onOpen: (item: Item) => void;
@@ -121,7 +138,7 @@ export function TaskRow({
           {item.tags.map(tag => <span className="task-label" key={tag}>@{tag}</span>)}
           {children.length > 0 && <span><GitBranch size="0.75rem" />{children.filter(child => child.done).length}/{children.length}</span>}
           {item.task.comments.length > 0 && <span><MessageSquare size="0.75rem" />{item.task.comments.length}</span>}
-          {item.task.deadline && <span className={localDate(new Date(item.task.deadline)) < localDate() && !item.done ? 'overdue' : ''}>Deadline {new Date(item.task.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>}
+          {item.task.deadline && <span className={localDate(new Date(item.task.deadline)) < localDate() && !item.done ? 'overdue' : ''}>Deadline {taskDateFormatters().date.format(new Date(item.task.deadline))}</span>}
           {item.task.assignee && <span>{item.task.assignee}</span>}
           {item.done && item.completedAt && <span>Completed {new Date(item.completedAt).toLocaleDateString()}</span>}
           {item.scheduledAt && (
@@ -281,7 +298,7 @@ export function TaskRow({
       </Popover>
     </div>
   );
-}
+});
 
 export function LabelPicker({ value, suggestions, onChange }: {
   value: string[]; suggestions: string[]; onChange: (labels: string[]) => void;

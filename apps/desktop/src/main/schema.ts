@@ -78,3 +78,8 @@ CREATE TRIGGER sync_item_updated
   END;
 PRAGMA user_version = 4;
 `;
+
+export const taskIndexesSchema = `
+CREATE INDEX items_parent ON items(json_extract(task_properties, '$.parentId'));
+PRAGMA user_version = 5;
+`;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { commandSchema, itemInputSchema, nextOccurrence, settingsSchema } from "@dock/contracts";
+import { commandSchema, itemInputSchema, nextOccurrence, settingsSchema, workspaceSchema } from "@dock/contracts";
+import { randomUUID } from "node:crypto";
 import { DockDatabase } from "./database.ts";
 import { checkReminders, isQuiet, ReminderJournal } from "./reminders.ts";
 
@@ -112,5 +113,29 @@ test("unchanged reminder checks do not request a window update", async () => {
     database.execute({ type: "item.save", item: itemInputSchema.parse({ kind: "task", title: "Due", scheduledAt: now.toISOString() }) }, now);
     assert.equal(await checkReminders(database, () => true, now, journal), true);
     assert.equal(await checkReminders(database, () => true, now, journal), false);
+  } finally { database.close(); }
+});
+
+test("explicit reminders exclude completed, deleted and revoked tasks and return when access is restored", async () => {
+  const database = new DockDatabase(":memory:");
+  const now = new Date("2026-10-26T12:00:00Z");
+  const project = workspaceSchema.parse({ projects: [{ id: randomUUID(), name: "Shared" }] }).projects[0]!;
+  const save = (title: string, projectId: string | null = null) => database.execute({ type: "item.save", item: itemInputSchema.parse({
+    kind: "task", title, task: { projectId, reminders: [now.toISOString()] },
+  }) }, now).items.find(item => item.title === title)!;
+  try {
+    database.applySharedProjects([project], [project.id]);
+    const open = save("Open"), completed = save("Completed"), deleted = save("Deleted"), shared = save("Shared", project.id);
+    database.execute({ type: "item.complete", id: completed.id }, now);
+    database.execute({ type: "item.delete", id: deleted.id }, now);
+    database.applySharedProjects([], []);
+    const shown: string[] = [];
+    const journal = new ReminderJournal();
+    const notify = (item: { id: string }) => { shown.push(item.id); return true; };
+    await checkReminders(database, notify, now, journal);
+    assert.deepEqual(shown, [open.id]);
+    database.applySharedProjects([project], [project.id]);
+    await checkReminders(database, notify, now, journal);
+    assert.deepEqual(shown, [open.id, shared.id]);
   } finally { database.close(); }
 });

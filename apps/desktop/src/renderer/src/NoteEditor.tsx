@@ -124,9 +124,17 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
     flip: { boundary: editor?.view.dom },
     shift: { boundary: editor?.view.dom, padding: 4 },
   }), [editor]);
+  const documentStats = useRef<{
+    doc: NonNullable<typeof editor>["state"]["doc"];
+    headings: ReturnType<typeof noteHeadings>;
+    words: number;
+  } | null>(null);
   const state = useEditorState({ editor, selector: ({ editor }) => {
     if (!editor) return null;
     const { selection, doc } = editor.state;
+    if (documentStats.current?.doc !== doc) documentStats.current = {
+      doc, headings: noteHeadings(editor), words: editor.getText().trim().split(/\s+/).filter(Boolean).length,
+    };
     const pos = selection.$from.depth ? selection.$from.before(1) : selection.from;
     const block = doc.nodeAt(pos);
     let table = null;
@@ -138,7 +146,7 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
       strike: editor.isActive("strike"), inlineCode: editor.isActive("code"), link: editor.isActive("link"),
       undo: editor.can().undo(), redo: editor.can().redo(), table: editor.isActive("table"), rows: table?.childCount ?? 0, columns: table?.firstChild?.childCount ?? 0,
       pos, block: block?.toJSON(), size: block?.nodeSize ?? 0,
-      headings: noteHeadings(editor), words: editor.getText().trim().split(/\s+/).filter(Boolean).length,
+      headings: documentStats.current.headings, words: documentStats.current.words,
       selectedText: doc.textBetween(selection.from, selection.to, " "), from: selection.from, to: selection.to,
     };
   } });

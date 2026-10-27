@@ -130,7 +130,8 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
         aria-label={section.name}
         onDragOver={event => {
           event.preventDefault();
-          if (event.target === event.currentTarget && !event.dataTransfer.types.includes(columnType)) setDrop({ sectionId: section.id, index: cards.length });
+          if (event.target === event.currentTarget && !event.dataTransfer.types.includes(columnType))
+            setDrop(current => current?.sectionId === section.id && current.index === cards.length ? current : { sectionId: section.id, index: cards.length });
         }}
         onDrop={event => {
           event.preventDefault();
@@ -187,7 +188,8 @@ export function ProjectBoard({ project, items, snapshot, dispatch, onOpen, onAdd
               onDragOver={event => {
                 if (event.dataTransfer.types.includes(columnType)) return;
                 const box = event.currentTarget.getBoundingClientRect();
-                setDrop({ sectionId: section.id, index: event.clientY < box.top + box.height / 2 ? index : index + 1 });
+                const target = event.clientY < box.top + box.height / 2 ? index : index + 1;
+                setDrop(current => current?.sectionId === section.id && current.index === target ? current : { sectionId: section.id, index: target });
               }}>
               <div className="board-card-title">
                 <Checkbox checked={item.done} aria-label={`Complete ${item.title}`} onCheckedChange={() => onToggle(item)} />

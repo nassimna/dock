@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { floatingStyle, themeStyle } from "@/lib/theme";
-import { Fragment, Suspense, lazy, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
+import { Fragment, Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   CalendarDays,
   BarChart3,
@@ -51,7 +51,7 @@ const Notes = lazy(() => import("./Notes").then(module => ({ default: module.Not
 import { Schedule } from "./Schedule";
 import { Settings } from "./Settings";
 import { TaskEditor } from "./TaskEditor";
-import { compileFilter, compareTasks, matchesSearch, parseTaskText } from "./lib/tasks";
+import { compileFilter, compileSearch, taskComparator, parseTaskText } from "./lib/tasks";
 import { ProjectEditor, Filters, Templates, CommandMenu } from "./WorkspaceTools";
 import { ProjectBoard, Progress, RecentlyDeleted } from "./TaskViews";
 import { SharedProjectSettings } from "./SharedProjectSettings";
@@ -60,6 +60,7 @@ import { useDock, type Act } from "./state";
 
 type View =
   "today" | "inbox" | "all" | "starred" | "notes" | "schedule" | "done" | "settings" | "project" | "filters" | "filter" | "progress" | "trash";
+const noChildren: readonly Item[] = [];
 const navigation = [
   { id: "today", title: "Today", icon: Sun },
   { id: "inbox", title: "Inbox", icon: Inbox },
@@ -228,6 +229,16 @@ export function App() {
   const [undoing, setUndoing] = useState(false);
   const [completions, setCompletions] = useState<Record<string, { item: Item; phase: "saving" | "complete" }>>({});
   const displayItems = useMemo(() => (snapshot?.items ?? []).map(item => completions[item.id]?.item ?? item), [snapshot?.items, completions]);
+  const projectTaskCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (role !== "main") return counts;
+    for (const item of snapshot?.items ?? []) {
+      if (item.kind === "task" && !item.done && item.task.projectId)
+        counts.set(item.task.projectId, (counts.get(item.task.projectId) ?? 0) + 1);
+    }
+    return counts;
+  }, [snapshot?.items]);
+  const openProject = useCallback((id: string) => { setProjectId(id); setQuery(''); setView('project'); }, []);
   const itemIndex = useMemo(() => {
     const byId = new Map(displayItems.map(item => [item.id, item]));
     const children = new Map<string, Item[]>();
@@ -243,6 +254,38 @@ export function App() {
   const [captureError, setCaptureError] = useState("");
   const [capturing, setCapturing] = useState(false);
   const [clock, setClock] = useState(Date.now());
+  const today = localDate(new Date(clock));
+  const formatting = role === "main" || role === "mini"
+    ? new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions() : null;
+  const timeZone = formatting?.timeZone ?? "";
+  const locale = formatting ? JSON.stringify([formatting.locale, formatting.calendar, formatting.numberingSystem, formatting.hourCycle]) : "";
+  const navigationCounts = useMemo<Partial<Record<View, number>>>(() => {
+    if (role !== "main") return {};
+    const counts = { today: 0, inbox: 0, all: 0, starred: 0, done: 0 };
+    for (const item of snapshot?.items ?? []) {
+      if (item.kind !== "task") continue;
+      if (item.done) { counts.done++; continue; }
+      counts.all++;
+      if (dueBy(item, today)) counts.today++;
+      if (!item.task.projectId) counts.inbox++;
+      if (item.task.priority < 4) counts.starred++;
+    }
+    return counts;
+  }, [snapshot?.items, today, timeZone]);
+  const collation = role === "main" ? new Intl.Collator().resolvedOptions().locale : "";
+  const projectNavigation = useMemo(() => {
+    if (role !== "main" || !snapshot) return null;
+    const children = new Map<string | null, Project[]>();
+    for (const project of snapshot.workspace.projects) {
+      const siblings = children.get(project.parentId) ?? [];
+      siblings.push(project); children.set(project.parentId, siblings);
+    }
+    const tree = (parentId: string | null, depth = 0): React.ReactNode => (children.get(parentId) ?? []).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name)).map(project => <div key={project.id}>
+      <ActionButton aria-label={`Project ${project.name}`} size="nav" className={`nav-button ${view === 'project' && projectId === project.id ? 'active' : ''}`} style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }} onClick={() => openProject(project.id)}><Hash size="1rem" style={{ color: project.color }} /><span className="nav-label">{project.name}</span>{project.favorite && <Star size="0.6875rem" />}<small>{projectTaskCounts.get(project.id) || ''}</small></ActionButton>
+      {tree(project.id, depth + 1)}
+    </div>);
+    return tree(null);
+  }, [snapshot?.workspace.projects, projectTaskCounts, view, projectId, openProject, collation]);
   const search = useRef<HTMLInputElement>(null);
   const main = useRef<HTMLElement>(null);
   const floatingDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
@@ -368,7 +411,7 @@ export function App() {
     return () => document.removeEventListener("keydown", handler);
   });
 
-  async function remove(item: Item) {
+  const remove = useCallback(async (item: Item) => {
     try {
       const result = await dispatch({ type: "item.delete", id: item.id });
       setEditing(undefined);
@@ -376,8 +419,8 @@ export function App() {
     } catch {
       /* The shared error banner reports the failure. */
     }
-  }
-  function clearCompletion(id: string) {
+  }, [dispatch]);
+  const clearCompletion = useCallback((id: string) => {
     window.clearTimeout(completionTimers.current.get(id));
     completionTimers.current.delete(id);
     setCompletions(current => {
@@ -385,8 +428,8 @@ export function App() {
       delete next[id];
       return next;
     });
-  }
-  async function toggleTask(item: Item) {
+  }, []);
+  const toggleTask = useCallback(async (item: Item) => {
     if (completions[item.id]) return;
     setCompletions(current => ({ ...current, [item.id]: { item, phase: "saving" } }));
     try {
@@ -402,8 +445,8 @@ export function App() {
     } catch {
       clearCompletion(item.id);
     }
-  }
-  async function quickEdit(item: Item, changes: Partial<Item>, message: string) {
+  }, [completions, dispatch, clearCompletion]);
+  const quickEdit = useCallback(async (item: Item, changes: Partial<Item>, message: string) => {
     try {
       const result = await dispatch({ type: "item.save", item: { ...item, ...changes, expectedRevision: item.revision } });
       const revision = result.items.find(saved => saved.id === item.id)?.revision;
@@ -412,7 +455,7 @@ export function App() {
     } catch {
       /* The shared error banner reports the failure. */
     }
-  }
+  }, [dispatch]);
   async function revertEdit() {
     if (!edited || undoing) return;
     setUndoing(true);
@@ -435,6 +478,10 @@ export function App() {
       setUndoing(false);
     }
   }
+  const openEditor = useCallback((next: Item | null) => {
+    if (editing !== undefined && editorDirty.current && next?.id !== editing?.id) setSwitchTo({ next });
+    else setEditing(next);
+  }, [editing]);
   if (!snapshot)
     return role === "floating" ? null : (
       <div className="startup">
@@ -490,20 +537,19 @@ export function App() {
       </Button>
     </div>;
   }
-  const today = localDate(new Date(clock));
   const project = snapshot.workspace.projects.find(project => project.id === projectId);
+  const compare = taskComparator(today);
   const savedFilter = snapshot.workspace.filters.find(filter => filter.id === filterId);
   let filterPredicate = (_item: Item) => true, filterFailure = '';
   if (view === 'filter' && savedFilter) {
     try { filterPredicate = compileFilter(savedFilter.query, snapshot.workspace, new Date(clock)); }
     catch (error) { filterFailure = error instanceof Error ? error.message : 'Invalid filter.'; filterPredicate = () => false; }
   }
-  const tasks = displayItems.filter(
-    (item) => item.kind === "task" && (!query || matchesSearch(item, query, snapshot.workspace)),
-  );
+  const searchPredicate = query ? compileSearch(query, snapshot.workspace) : null;
+  const tasks = displayItems.filter(item => item.kind === "task" && (!searchPredicate || searchPredicate(item)));
   const stickyTasks = (role === "mini" ? tasks : []).filter(item => !item.done &&
     (stickyFilter === "today" ? dueBy(item, today) :
-      stickyFilter === "starred" ? item.task.priority < 4 : true)).sort((a, b) => compareTasks(a, b, today));
+      stickyFilter === "starred" ? item.task.priority < 4 : true)).sort(compare);
   const visible = tasks
     .filter((item) => {
       if (view === "done") return item.done;
@@ -519,8 +565,8 @@ export function App() {
     .sort(
       (a, b) => view === "done"
         ? (b.completedAt ?? b.updatedAt).localeCompare(a.completedAt ?? a.updatedAt)
-        : view === "project" ? a.task.order - b.task.order || compareTasks(a, b, today)
-        : compareTasks(a, b, today),
+        : view === "project" ? a.task.order - b.task.order || compare(a, b)
+        : compare(a, b),
     );
   const overdue = visible.filter(
     (item) =>
@@ -565,12 +611,7 @@ export function App() {
   function setLayout(next: "list" | "board") {
     if (projectId) setProjectLayouts(current => ({ ...current, [projectId]: next }));
   }
-  function openProject(id: string) { setProjectId(id); setQuery(''); setView('project'); }
   function openFilter(id: string) { setFilterId(id); setQuery(''); setView('filter'); }
-  function openEditor(next: Item | null) {
-    if (editing !== undefined && editorDirty.current && next?.id !== editing?.id) setSwitchTo({ next });
-    else setEditing(next);
-  }
   function beginTask(sectionId: string | null = null, scheduledAt?: string) { setNewTaskOptions({ sectionId }); setNewScheduledAt(scheduledAt); openEditor(null); }
   async function bulk(action: 'complete' | 'delete' | 'update', patch?: { task?: Partial<TaskProperties>; scheduledAt?: string | null; space?: Item['space'] }) {
     setBulkBusy(true);
@@ -582,10 +623,6 @@ export function App() {
     catch { /* The shared error banner reports the failure. */ }
     finally { setBulkBusy(false); }
   }
-  const projectTree = (parentId: string | null, depth = 0): React.ReactNode => snapshot.workspace.projects.filter(project => project.parentId === parentId).sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.name.localeCompare(b.name)).map(project => <div key={project.id}>
-    <ActionButton aria-label={`Project ${project.name}`} size="nav" className={`nav-button ${view === 'project' && projectId === project.id ? 'active' : ''}`} style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }} onClick={() => openProject(project.id)}><Hash size="1rem" style={{ color: project.color }} /><span className="nav-label">{project.name}</span>{project.favorite && <Star size="0.6875rem" />}<small>{snapshot.items.filter(item => item.kind === 'task' && !item.done && item.task.projectId === project.id).length || ''}</small></ActionButton>
-    {projectTree(project.id, depth + 1)}
-  </div>);
   /** `tree` lists open subtasks under their parents; `nested` marks those subtask rows. */
   const rows = (items: Item[], tree = false, nested = false): React.ReactNode =>
     items.map((item) => <Fragment key={item.id}>
@@ -594,18 +631,21 @@ export function App() {
         snapshot={snapshot}
         note={itemIndex.byId.get(item.linkedNoteId ?? "")}
         parent={nested ? undefined : itemIndex.byId.get(item.task.parentId ?? "")}
-        children={itemIndex.children.get(item.id) ?? []}
-        onChange={(item, changes, message) => void quickEdit(item, changes, message)}
+        children={itemIndex.children.get(item.id) ?? noChildren}
+        clock={clock}
+        locale={locale}
+        timeZone={timeZone}
+        onChange={quickEdit}
         nested={nested}
         onOpen={openEditor}
-        onDelete={item => void remove(item)}
-        onToggle={item => void toggleTask(item)}
+        onDelete={remove}
+        onToggle={toggleTask}
         completion={completions[item.id]?.phase}
         selected={bulkMode ? selected.includes(item.id) : undefined}
-        onSelect={() => setSelected(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id])}
+        onSelect={bulkMode ? () => setSelected(current => current.includes(item.id) ? current.filter(id => id !== item.id) : [...current, item.id]) : undefined}
       />
       {tree && rows((itemIndex.children.get(item.id) ?? []).filter(child => !child.done)
-        .sort((a, b) => a.task.order - b.task.order || compareTasks(a, b, today)), true, true)}
+        .sort((a, b) => a.task.order - b.task.order || compare(a, b)), true, true)}
     </Fragment>);
 
   const editor = editing !== undefined && (
@@ -706,10 +746,7 @@ export function App() {
             <div className="sidebar-label">Workspace</div>
             <nav className="navigation" aria-label="App navigation">
               {navigation.map(({ id, title, icon: Icon }) => {
-                const count = snapshot.items.filter(item => item.kind === "task" &&
-                  (id === "done" ? item.done : !item.done) &&
-                  (id === "today" ? dueBy(item, today) :
-                   id === "inbox" ? !item.task.projectId : id === "starred" ? item.task.priority < 4 : true)).length;
+                const count = navigationCounts[id] ?? 0;
                 return (
                   <ActionButton aria-label={title} size="nav" key={id} className={`nav-button ${view === id ? "active" : ""}`}
                     aria-current={view === id ? "page" : undefined}
@@ -722,7 +759,7 @@ export function App() {
             </nav>
             <Separator className="my-2" />
             <div className="sidebar-project-heading"><div className="sidebar-label">Projects</div><ActionButton aria-label="New project" size="icon-xs" onClick={() => setProjectEditor(null)}><Plus size="0.875rem" /></ActionButton></div>
-            <nav className="project-navigation" aria-label="Projects">{projectTree(null)}</nav>
+            <nav className="project-navigation" aria-label="Projects">{projectNavigation}</nav>
             {snapshot.workspace.filters.some(filter => filter.favorite) && <><div className="sidebar-label">Favorite filters</div><nav aria-label="Favorite filters">{snapshot.workspace.filters.filter(filter => filter.favorite).map(filter => <ActionButton key={filter.id} aria-label={`Filter ${filter.name}`} size="nav" className={`nav-button ${view === 'filter' && filterId === filter.id ? 'active' : ''}`} onClick={() => openFilter(filter.id)}><Filter size="0.9375rem" /><span className="nav-label">{filter.name}</span></ActionButton>)}</nav></>}
             </div>
             <div className="sidebar-bottom">
@@ -799,8 +836,9 @@ export function App() {
             )}
             <div className="notes-view" hidden={view !== "notes"}>
               {(view === "notes" || notesMounted) && <Suspense fallback={<p role="status">Opening notes…</p>}><Notes
+                active={view === "notes"}
                 snapshot={snapshot}
-                query={query}
+                query={view === "notes" ? query : ""}
                 dispatch={dispatch}
                 onTask={openEditor}
                 onDelete={(item) => void remove(item)}

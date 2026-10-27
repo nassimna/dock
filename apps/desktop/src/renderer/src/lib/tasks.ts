@@ -15,9 +15,11 @@ export function parseTaskText(text: string, workspace: Workspace, now = new Date
     recognized.push(match[0].trim());
     title = title.slice(0, match.index) + ' ' + title.slice(match.index! + match[0].length);
   }
-  for (const project of [...workspace.projects].sort((a, b) => b.name.length - a.name.length)) {
-    const escaped = project.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (!task.projectId) take(new RegExp(`(?:^|\\s)#(?:"${escaped}"|${escaped})(?=\\s|$)`, 'i'), () => { task.projectId = project.id; });
+  if (title.includes('#')) {
+    for (const project of [...workspace.projects].sort((a, b) => b.name.length - a.name.length)) {
+      const escaped = project.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (!task.projectId) take(new RegExp(`(?:^|\\s)#(?:"${escaped}"|${escaped})(?=\\s|$)`, 'i'), () => { task.projectId = project.id; });
+    }
   }
   take(/(?:^|\s)p([1-4])(?=\s|$)/i, match => { task.priority = Number(match[1]) as TaskProperties['priority']; });
   title = title.replace(/(?:^|\s)@([\p{L}\p{N}_-]{1,40})(?=\s|$)/gu, (match, label: string) => {
@@ -123,9 +125,18 @@ export function compileFilter(query: string, workspace: Workspace, now = new Dat
   return item => (!item.done || includesDone) && result(item);
 }
 
-export function compareTasks(a: Item, b: Item, today = localDate()): number {
-  const due = (item: Item) => item.scheduledAt && localDate(new Date(item.scheduledAt)) <= today ? 0 : 1;
-  return due(a) - due(b) || a.task.priority - b.task.priority ||
+export function taskComparator(today = localDate()): (a: Item, b: Item) => number {
+  const dates = new Map<string, number>();
+  const due = (item: Item) => {
+    if (!item.scheduledAt) return 1;
+    let value = dates.get(item.scheduledAt);
+    if (value === undefined) {
+      value = localDate(new Date(item.scheduledAt)) <= today ? 0 : 1;
+      dates.set(item.scheduledAt, value);
+    }
+    return value;
+  };
+  return (a, b) => due(a) - due(b) || a.task.priority - b.task.priority ||
     (a.scheduledAt ?? "z").localeCompare(b.scheduledAt ?? "z") || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
 
@@ -137,8 +148,9 @@ export function recurrenceLabel(item: Item): string {
   return afterCompletion && item.recurrence === 'custom' ? `${label} after completion` : label;
 }
 
-export function matchesSearch(item: Item, query: string, workspace: Workspace): boolean {
-  const project = workspace.projects.find(project => project.id === item.task.projectId);
-  return [item.title, item.body, project?.name ?? '', ...item.tags.map(tag => `@${tag}`), ...item.task.comments.map(comment => comment.body)]
-    .join(' ').toLowerCase().includes(query.trim().toLowerCase());
+export function compileSearch(query: string, workspace: Workspace): (item: Item) => boolean {
+  const value = query.trim().toLowerCase();
+  const projects = new Map(workspace.projects.map(project => [project.id, project.name]));
+  return item => [item.title, item.body, projects.get(item.task.projectId ?? '') ?? '', ...item.tags.map(tag => `@${tag}`), ...item.task.comments.map(comment => comment.body)]
+    .join(' ').toLowerCase().includes(value);
 }

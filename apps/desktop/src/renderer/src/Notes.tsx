@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeftRight, Check, FileText, Inbox, Link2, List, MoreHorizontal, Plus, Save, Tag, Trash2, Type, X } from "lucide-react";
 import type { Item, Snapshot } from "@dock/contracts";
 import { Button } from "@/components/ui/button";
@@ -21,8 +21,8 @@ function initialDraft(note: Item): Draft {
     noteStyle: note.noteStyle, status: "saved", error: "", generation: 0 };
 }
 
-export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
-  snapshot: Snapshot; query: string; dispatch: Dispatch;
+export const Notes = memo(function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
+  active: boolean; snapshot: Snapshot; query: string; dispatch: Dispatch;
   onTask: (item: Item) => void; onDelete: (item: Item) => void;
 }) {
   const notes = snapshot.items.filter(item => item.kind === "note");
@@ -51,10 +51,11 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
   const [taskQuery, setTaskQuery] = useState("");
   const [taskError, setTaskError] = useState("");
   const [linking, setLinking] = useState<string | null>(null);
-  const visible = notes.filter(note => {
+  const search = (filter || query).toLowerCase();
+  const visible = search ? notes.filter(note => {
     const draft = drafts[note.id] ?? initialDraft(note);
-    return `${draft.title} ${draft.body} ${draft.tags.join(" ")}`.toLowerCase().includes((filter || query).toLowerCase());
-  });
+    return `${draft.title} ${draft.body} ${draft.tags.join(" ")}`.toLowerCase().includes(search);
+  }) : notes;
   const note = notes.find(note => note.id === selected) ?? visible[0];
   const draft = note ? drafts[note.id] ?? initialDraft(note) : null;
 
@@ -156,13 +157,20 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
       setFilter(""); setLibraryOpen(false);
     } catch { /* The shared banner reports the failure. */ }
   }
-  async function linkTask(task: Item, linked: boolean) {
+  const linkTask = useCallback(async (task: Item, linked: boolean) => {
     setLinking(task.id); setTaskError("");
     try {
       await dispatch({ type: "item.save", item: { ...task, expectedRevision: task.revision, linkedNoteId: linked ? note!.id : null } });
     } catch (error) { setTaskError(errorMessage(error)); }
     finally { setLinking(null); }
-  }
+  }, [dispatch, note?.id]);
+  const taskOptions = useMemo(() => {
+    if (!note) return [];
+    const query = taskQuery.toLowerCase();
+    return snapshot.items.filter(item => item.kind === "task" && item.title.toLowerCase().includes(query)).map(task => <Button key={task.id} variant="ghost" disabled={linking !== null} onClick={() => void linkTask(task, task.linkedNoteId !== note.id)}>
+      <Check size="0.875rem" className={task.linkedNoteId === note.id ? "" : "invisible"} /><span>{task.title}<small>{task.linkedNoteId && task.linkedNoteId !== note.id ? "Moves link from another note" : task.space}</small></span>
+    </Button>);
+  }, [snapshot.items, taskQuery, linking, note?.id, linkTask]);
   const linkedTasks = snapshot.items.filter(item => item.kind === "task" && item.linkedNoteId === note?.id);
   const allTags = [...new Set(snapshot.items.flatMap(item => item.tags).concat(draft?.tags ?? []))].sort();
   const matches = allTags.filter(tag => tag.toLowerCase().includes(tagQuery.toLowerCase()));
@@ -261,10 +269,8 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
                 <PopoverTrigger asChild><Button variant="ghost" size="xs" className="note-property-add" aria-label="Edit linked tasks"><Plus size="0.875rem" aria-hidden="true" />Link task</Button></PopoverTrigger>
                 <PopoverContent align="start" className="note-picker">
                   <Input size="xs" aria-label="Search tasks to link" placeholder="Search tasks…" value={taskQuery} onChange={event => setTaskQuery(event.target.value)} />
-                  <div className="note-picker-options">{snapshot.items.filter(item => item.kind === "task" && item.title.toLowerCase().includes(taskQuery.toLowerCase())).map(task => <Button key={task.id} variant="ghost" disabled={linking !== null} onClick={() => void linkTask(task, task.linkedNoteId !== note.id)}>
-                    <Check size="0.875rem" className={task.linkedNoteId === note.id ? "" : "invisible"} /><span>{task.title}<small>{task.linkedNoteId && task.linkedNoteId !== note.id ? "Moves link from another note" : task.space}</small></span>
-                  </Button>)}</div>
-                  {!snapshot.items.some(item => item.kind === "task" && item.title.toLowerCase().includes(taskQuery.toLowerCase())) && <p className="muted">No matching tasks. Create a task first.</p>}
+                  <div className="note-picker-options">{taskOptions}</div>
+                  {!taskOptions.length && <p className="muted">No matching tasks. Create a task first.</p>}
                   {taskError && <p role="alert" className="note-error">{taskError}</p>}
                 </PopoverContent>
               </Popover>
@@ -281,4 +287,5 @@ export function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
       </div>}
     </div>
   </section>;
-}
+// Hidden drafts keep autosaving; activation always refreshes props and handlers.
+}, (previous, next) => !previous.active && !next.active && previous.snapshot === next.snapshot);

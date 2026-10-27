@@ -20,7 +20,7 @@ import {
   type SyncItem,
   type UndoState,
 } from "@dock/contracts";
-import { schema, syncSchema, notesSchema, tasksSchema } from "./schema.ts";
+import { schema, syncSchema, notesSchema, tasksSchema, taskIndexesSchema } from "./schema.ts";
 
 type Row = Record<string, string | number | null>;
 type UndoEntry = {
@@ -38,7 +38,7 @@ export class DockDatabase {
     this.db = new DatabaseSync(filename);
     this.db.exec("PRAGMA busy_timeout = 5000");
     const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
-    if (typeof version === "number" && version > 4) {
+    if (typeof version === "number" && version > 5) {
       this.db.close();
       throw new Error("This database was created by a newer version of Dock.");
     }
@@ -49,6 +49,7 @@ export class DockDatabase {
       if (Number(version) < 2) this.db.exec(syncSchema);
       if (Number(version) < 3) this.db.exec(notesSchema);
       if (Number(version) < 4) this.db.exec(tasksSchema);
+      if (Number(version) < 5) this.db.exec(taskIndexesSchema);
       if (!this.db.prepare("SELECT 1 FROM settings WHERE key = 'spaces_folded'").get()) this.foldSpaces();
       this.db.exec("COMMIT");
     } catch (error) {
@@ -200,9 +201,17 @@ export class DockDatabase {
     this.db.exec("BEGIN IMMEDIATE");
     const undoAction = command.type === "item.delete" ? "delete" : command.type === "item.complete" ? "complete" :
       command.type === "item.bulk" && command.action !== "update" ? command.action : null;
+    const undoIds = command.type === "item.bulk" ? command.ids :
+      command.type === "item.complete" || command.type === "item.delete" ? [command.id] : [];
+    const undoRows = () => this.db.prepare(`WITH RECURSIVE affected(id) AS (
+      SELECT value FROM json_each(?)
+      UNION SELECT items.id FROM items JOIN affected
+        ON json_extract(items.task_properties, '$.parentId') = affected.id OR items.recurrence_source_id = affected.id
+    ) SELECT id, done, completed_at, deleted_at, revision FROM items WHERE id IN affected`)
+      .all(JSON.stringify(undoIds)) as Row[];
     let nextReceipt = this.undoReceipt;
     try {
-      const beforeRows = undoAction ? this.db.prepare("SELECT id, done, completed_at, deleted_at FROM items").all() as Row[] : [];
+      const beforeRows = undoAction ? undoRows() : [];
       if (command.type === "item.undo") {
         const receipt = this.undoReceipt;
         if (!receipt || receipt.token !== command.token) throw new Error("This action is no longer available to undo.");
@@ -297,7 +306,7 @@ export class DockDatabase {
         const beforeById = new Map(beforeRows.map(row => [String(row.id), row]));
         const entries: UndoEntry[] = [];
         let count = 0;
-        for (const row of this.db.prepare("SELECT id, done, completed_at, deleted_at, revision FROM items").all() as Row[]) {
+        for (const row of undoRows()) {
           const before = beforeById.get(String(row.id));
           if (before && before.done === row.done && before.completed_at === row.completed_at && before.deleted_at === row.deleted_at) continue;
           if (before && (undoAction === "complete" ? before.done !== row.done : before.deleted_at !== row.deleted_at)) count++;
@@ -622,6 +631,15 @@ export class DockDatabase {
       )
       .all(now.toISOString(), JSON.stringify(this.hiddenProjectIds()))
       .map((row) => this.item(row as Row));
+  }
+
+  reminderItems(): Item[] {
+    return this.db.prepare(`SELECT * FROM items WHERE kind = 'task' AND done = 0 AND deleted_at IS NULL
+      AND json_array_length(task_properties, '$.reminders') > 0
+      AND (json_extract(task_properties, '$.projectId') IS NULL OR json_extract(task_properties, '$.projectId') NOT IN (SELECT value FROM json_each(?)))
+      ORDER BY created_at DESC, id`)
+      .all(JSON.stringify(this.hiddenProjectIds()))
+      .map(row => this.item(row as Row));
   }
 
   markNotified(id: string, now: Date, scheduledAt?: string): void {
