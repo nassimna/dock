@@ -98,7 +98,7 @@ try {
   assert.equal(snapshot.system.dataPath, join(profile, "rivnote.sqlite"));
   assert.equal(existsSync(join(profile, "dock.sqlite")), false);
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
-  const page = browser.contexts()[0].pages().find(page => page.url().includes("index.html"));
+  const page = browser.contexts()[0].pages().find(page => new URL(page.url()).searchParams.get("window") === "main");
   assert(page);
   await page.getByRole("button", { name: /^All tasks/ }).click();
   await expect(page.getByText(saved.title, { exact: true })).toBeVisible();
