@@ -13,6 +13,7 @@ linux:
   category: Office
   icon: resources/icon.png
 mac:
+  artifactName: ${productName}-${version}-${arch}-mac.${ext}
   target:
     - dmg
     - zip

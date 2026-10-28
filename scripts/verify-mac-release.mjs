@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, rmSync, readdirSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -15,6 +15,10 @@ assert(["arm64", "x64"].includes(arch));
 assert.equal(process.arch, arch);
 const version = JSON.parse(readFileSync("apps/desktop/package.json", "utf8")).version;
 const release = resolve("apps/desktop/release");
+const packagedDirectory = join(release, arch === "arm64" ? "mac-arm64" : "mac");
+const bundles = readdirSync(packagedDirectory).filter(name => name.endsWith(".app"));
+assert.equal(bundles.length, 1);
+const packagedBundle = join(packagedDirectory, bundles[0]);
 const root = resolve(`.validation/mac-release-${arch}`);
 const installed = join(root, "installed/Dock.app");
 const profile = join(root, "profile");
@@ -34,7 +38,7 @@ try {
     assert.equal(createHash("sha256").update(readFileSync(legacyZip)).digest("hex"), "2e2a15fbac9c565274c580be6b875fe9e43b2f52aa6a08e01c096f21560d9cb5");
     await execute("/usr/bin/ditto", ["-x", "-k", legacyZip, join(root, "installed")]);
   } else {
-    await execute("/usr/bin/ditto", [join(release, "mac/Rivnote.app"), installed]);
+    await execute("/usr/bin/ditto", [packagedBundle, installed]);
   }
   assert(existsSync(installed));
   app = await _electron.launch({ executablePath: join(installed, "Contents/MacOS/dock"), args: ["--mute-audio"], env, chromiumSandbox: true });
@@ -49,7 +53,7 @@ try {
   const saved = before.items.find(item => item.title === "Mac release upgrade proof");
   assert(saved);
   const oldDescriptor = JSON.parse(readFileSync(descriptorPath, "utf8"));
-  const signature = await execute("/usr/bin/codesign", ["-dv", "--verbose=4", join(release, arch === "arm64" ? "mac-arm64/Rivnote.app" : "mac/Rivnote.app")]);
+  const signature = await execute("/usr/bin/codesign", ["-dv", "--verbose=4", packagedBundle]);
   assert(signature.stderr.includes("Signature=adhoc"));
   const sha512 = createHash("sha512").update(readFileSync(archive)).digest("base64");
   const staged = await stageMacUpdate(installed, archive, version, sha512);
@@ -96,6 +100,7 @@ try {
   browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`);
   const page = browser.contexts()[0].pages().find(page => page.url().includes("index.html"));
   assert(page);
+  await page.getByRole("button", { name: /^All tasks/ }).click();
   await expect(page.getByText(saved.title, { exact: true })).toBeVisible();
   await page.screenshot({ path: join(root, "updated-mac.png") });
   writeFileSync(join(root, "result.json"), JSON.stringify({ arch, fromVersion: before.system.version, toVersion: version,
