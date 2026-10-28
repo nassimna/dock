@@ -1,9 +1,10 @@
 import { DockDatabase, type SqliteConnection } from "@dock/core/database";
-import { itemSchema, type StoreSnapshot } from "@dock/contracts";
+import { appBrand, itemSchema, type StoreSnapshot } from "@dock/contracts";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
 import * as Crypto from "expo-crypto";
-import { openDatabaseSync } from "expo-sqlite";
+import { defaultDatabaseDirectory, openDatabaseSync } from "expo-sqlite";
+import { File } from "expo-file-system";
 import { storage } from "./storage";
 
 let database: DockDatabase | undefined;
@@ -11,7 +12,22 @@ const listeners = new Set<() => void>();
 
 export function getDatabase(): DockDatabase {
   if (database) return database;
-  const sqlite = openDatabaseSync("dock.sqlite");
+  const directory = `file://${defaultDatabaseDirectory}`;
+  const filename = new File(directory, appBrand.databaseFilename);
+  const previous = new File(directory, "dock.sqlite");
+  if (!filename.exists && previous.exists) {
+    const legacy = openDatabaseSync("dock.sqlite");
+    try {
+      // Fold crash-recovered WAL writes into the main file before moving it.
+      const checkpoint = legacy.getFirstSync<{ busy: number }>("PRAGMA wal_checkpoint(TRUNCATE)");
+      if (checkpoint?.busy !== 0)
+        throw new Error("The local database is busy. Restart Rivnote to finish updating it.");
+    } finally {
+      legacy.closeSync();
+    }
+    previous.move(filename);
+  }
+  const sqlite = openDatabaseSync(appBrand.databaseFilename);
   const connection: SqliteConnection = {
     exec: (sql) => sqlite.execSync(sql),
     prepare: (sql) => ({

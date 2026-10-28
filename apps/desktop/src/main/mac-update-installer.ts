@@ -23,7 +23,7 @@ export async function stageMacUpdate(installed: string, archive: string, version
   await pipeline(createReadStream(archive), hash);
   if (hash.digest("base64") !== sha512)
     throw Object.assign(new Error("The downloaded update checksum does not match."), { code: "ERR_DOCK_UPDATE_INVALID" });
-  if (!(await lstat(installed)).isDirectory()) throw new Error("Dock must be installed in a regular application folder.");
+  if (!(await lstat(installed)).isDirectory()) throw new Error("Rivnote must be installed in a regular application folder.");
   await access(dirname(installed), constants.W_OK);
   const stage = await mkdtemp(join(dirname(installed), ".dock-update-"));
   try {
@@ -41,7 +41,7 @@ export async function stageMacUpdate(installed: string, archive: string, version
       plist(replacement, "CFBundleShortVersionString"), plist(replacement, "CFBundleExecutable"),
     ]);
     if (id !== "dev.dock.desktop" || nextId !== id || nextVersion !== version || basename(executable) !== executable)
-      throw new Error("The update application or version does not match Dock.");
+      throw new Error("The update application or version does not match Rivnote.");
     await access(join(replacement, "Contents/MacOS", executable), constants.X_OK);
     await execute("/usr/bin/codesign", ["--verify", "--deep", "--strict", replacement]);
     return { stage, replacement };

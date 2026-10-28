@@ -209,6 +209,6 @@ export function Schedule({ items, renderTasks, snapshot, dispatch, onOpen, onAdd
         </div>
       </div>
     </>}
-    <p className="muted reminder-note">Reminders run while Dock is open or in the tray. Late reminders are checked after sleep.</p>
+    <p className="muted reminder-note">Reminders run while Rivnote is open or in the tray. Late reminders are checked after sleep.</p>
   </>;
 }

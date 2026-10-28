@@ -76,7 +76,7 @@ export function SyncConflicts({ snapshot, dispatch, onClose, onOpenItem, beforeR
       <DialogContent className={`sync-conflicts-dialog${draft ? " sync-manual-merge" : ""}`}>
         <DialogHeader>
           <DialogTitle><GitCompareArrows size={20} /> {draft ? "Merge manually" : selected ? "Compare versions" : "Sync conflicts"}</DialogTitle>
-          <DialogDescription>{draft ? "Current and saved versions stay read-only. Edit the merged result, then save it. Both originals will remain recoverable in Recently deleted." : selected ? "The same item changed before both devices synced. Compare the versions, choose one, or merge their text manually." : "Review competing edits and choose which versions to keep. Decisions sync when Dock is connected."}</DialogDescription>
+          <DialogDescription>{draft ? "Current and saved versions stay read-only. Edit the merged result, then save it. Both originals will remain recoverable in Recently deleted." : selected ? "The same item changed before both devices synced. Compare the versions, choose one, or merge their text manually." : "Review competing edits and choose which versions to keep. Decisions sync when Rivnote is connected."}</DialogDescription>
         </DialogHeader>
         <div className="sync-conflicts-content">
           {status && <p role="status">{status}</p>}

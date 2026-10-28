@@ -7,10 +7,10 @@ import type { Act } from "./state";
 
 const messages: Record<UpdateState["status"], string> = {
   unavailable: "Updates are unavailable in this build.",
-  idle: "Check for the latest version of Dock.",
+  idle: "Check for the latest version of Rivnote.",
   checking: "Checking for updates…",
   current: "You’re up to date.",
-  available: "A new version of Dock is available.",
+  available: "A new version of Rivnote is available.",
   downloading: "Downloading your update…",
   ready: "Your update is ready to install.",
   installing: "Preparing to restart…",
@@ -24,7 +24,7 @@ export function UpdateDetails({ update, version, act }: { update: UpdateState; v
   const label = update.status === "error" ? action === "download" ? "Retry download" : action === "install" ? "Retry restart" : "Check again" :
     action === "install" ? "Restart to update" : action === "download" ? "Download update" : "Check for updates";
   return <div className="update-details">
-    {update.version && <strong>Dock {update.version}</strong>}
+    {update.version && <strong>Rivnote {update.version}</strong>}
     <p role="status">{update.message || messages[update.status]}</p>
     {update.status === "downloading" && <div className="update-download">
       <div className="update-progress" role="progressbar" aria-label="Update download" aria-valuemin={0} aria-valuemax={100}
@@ -58,7 +58,7 @@ export function UpdateNotice({ update, version, act }: { update: UpdateState; ve
       </PopoverTrigger></TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
-    <PopoverContent align="end" className="update-popover" aria-label="Dock updates">
+    <PopoverContent align="end" className="update-popover" aria-label="Rivnote updates">
       <UpdateDetails update={update} version={version} act={act} />
     </PopoverContent>
   </Popover>;

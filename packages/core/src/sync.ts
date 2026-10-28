@@ -7,6 +7,7 @@ import {
   type SyncFeatures,
   type SyncFeatureCommand,
   syncEndpointSchema,
+  syncCredentialsSchema,
   syncSessionSchema,
   syncPullResultSchema,
   syncPushResultSchema,
@@ -82,6 +83,7 @@ export class DockSync {
   }
 
   restore(credentials: SyncCredentials): void {
+    credentials = syncCredentialsSchema.parse(credentials);
     this.database.bindSyncAccount(credentials.endpoint, credentials.accountId);
     this.credentials = credentials;
     this.phase = "pending";
@@ -99,7 +101,7 @@ export class DockSync {
     const endpoint = syncEndpointSchema.parse(command.endpoint);
     const bound = this.database.syncAccount();
     if (bound && bound.endpoint !== endpoint)
-      throw new Error("Use a separate Dock profile for another sync server.");
+      throw new Error("Use a separate Rivnote profile for another sync server.");
     const response = await this.request(
       endpoint,
       command.type === "sync.signup" ? "/auth/signup" : "/auth/login",
@@ -108,9 +110,6 @@ export class DockSync {
         email: command.email,
         password: command.password,
         deviceName: this.deviceName,
-        ...(command.type === "sync.signup"
-          ? { inviteCode: command.inviteCode }
-          : {}),
       },
     );
     const session = syncSessionSchema.parse(response);
@@ -145,7 +144,7 @@ export class DockSync {
       const credentials = this.credentials;
       if (!credentials)
         throw new Error(
-          "Connect Dock Sync before managing your account or shared projects.",
+          "Connect Rivnote Sync before managing your account or shared projects.",
         );
       if (command.type === "sync.recovery.create") {
         const response = await this.request(

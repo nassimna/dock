@@ -1,5 +1,5 @@
 appId: dev.dock.desktop
-productName: Dock
+productName: Rivnote
 executableName: dock
 directories:
   output: release
@@ -24,6 +24,7 @@ publish:
   repo: dock
   releaseType: release
 win:
+  icon: resources/app-icon.ico
   target: nsis
 nsis:
   oneClick: false

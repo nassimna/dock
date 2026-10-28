@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useDock, useCommand } from "@/lib/use-dock";
-import type { Settings } from "@dock/contracts";
+import { appBrand, type Settings } from "@dock/contracts";
+import { colorPresets } from "@dock/core/theme";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { setLanguage } from "@/lib/i18n";
@@ -29,7 +30,7 @@ export function SettingsScreen() {
     <SafeAreaView edges={["top"]} className="flex-1 bg-background">
       <ScrollView contentContainerStyle={{ padding: 20, gap: 28 }}>
         <View className="gap-2 pt-4">
-          <Text variant="muted">Dock</Text>
+          <Text variant="muted">{i18n.language === "ar" ? appBrand.arabicName : appBrand.name}</Text>
           <Text className="text-3xl font-semibold">{t("settings.title")}</Text>
         </View>
         <Button
@@ -87,7 +88,7 @@ export function SettingsScreen() {
             <Select
               label={t("production.palette")}
               value={settings.colorPreset}
-              options={["Graphite", "Forest", "Violet"].map((value) => ({
+              options={Object.keys(colorPresets).map((value) => ({
                 value,
                 label: t(`production.${value}`),
               }))}

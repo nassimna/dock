@@ -3,13 +3,14 @@ import { test } from "node:test";
 import { settingsSchema } from "@dock/contracts";
 import { floatingStyle, themeStyle } from "./theme.ts";
 
-test("Ink is the default and legacy custom colors survive missing appearance fields", () => {
+test("Rivnote defaults and legacy appearance choices retain independent custom colors", () => {
   const defaults = settingsSchema.parse({});
   assert.equal(defaults.uiPreset, "ink");
-  assert.equal(defaults.colorPreset, "Violet");
+  assert.equal(defaults.colorPreset, "River");
   assert.equal(defaults.rounding, "subtle");
+  assert.equal(settingsSchema.parse({ colorPreset: "Violet" }).colorPreset, "Violet");
   assert.equal(themeStyle(defaults)["--sidebar-width"], "3.375rem");
-  assert.equal(themeStyle(defaults)["--primary"], "#c5a4ff");
+  assert.equal(themeStyle(defaults)["--primary"], "#5ae0c5");
   const legacy = settingsSchema.parse({ theme: "light", themeColors: { light: { primary: "#123456" }, dark: {} } });
   assert.equal(themeStyle(legacy)["--primary"], "#123456");
 });

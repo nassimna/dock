@@ -1,5 +1,6 @@
 import {
   itemSchema,
+  syncEndpointSchema,
   itemInputSchema,
   conflictMergeSchema,
   backupSchema,
@@ -68,7 +69,7 @@ export class DockDatabase {
     const version = this.db.prepare("PRAGMA user_version").get()?.user_version;
     if (typeof version === "number" && version > 6) {
       this.db.close();
-      throw new Error("This database was created by a newer version of Dock.");
+      throw new Error("This database was created by a newer version of Rivnote.");
     }
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON");
     this.db.exec("BEGIN IMMEDIATE");
@@ -1238,21 +1239,24 @@ export class DockDatabase {
     const row = this.db
       .prepare("SELECT value FROM sync_meta WHERE key = 'account'")
       .get();
-    return row ? JSON.parse(String(row.value)) : null;
+    if (!row) return null;
+    const account = JSON.parse(String(row.value));
+    return { ...account, endpoint: syncEndpointSchema.parse(account.endpoint) };
   }
 
   bindSyncAccount(endpoint: string, accountId: string): void {
+    endpoint = syncEndpointSchema.parse(endpoint);
     const existing = this.syncAccount();
     if (
       existing &&
       (existing.endpoint !== endpoint || existing.accountId !== accountId)
     )
       throw new Error(
-        "This workspace belongs to another sync account or server. Use a separate Dock profile to keep accounts apart.",
+        "This workspace belongs to another sync account or server. Use a separate Rivnote profile to keep accounts apart.",
       );
     this.db
       .prepare(
-        "INSERT OR IGNORE INTO sync_meta(key, value) VALUES('account', ?)",
+        "INSERT INTO sync_meta(key, value) VALUES('account', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
       )
       .run(JSON.stringify({ endpoint, accountId }));
   }

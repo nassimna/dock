@@ -24,7 +24,6 @@ export async function startSyncFixture(directory: string) {
   database.exec(readFileSync(new URL("../migrations/0002_collaboration.sql", import.meta.url), "utf8"));
   const env: SyncEnvironment = {
     PASSWORD_PEPPER: "test-only-pepper-not-for-deployment",
-    REGISTRATION_SECRET: "test-only-invite",
     AUTH_LIMITER: { async limit() { return { success: true }; } },
     DB: {
       prepare(sql) { return new LocalStatement(database, sql); },

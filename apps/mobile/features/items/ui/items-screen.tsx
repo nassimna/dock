@@ -8,7 +8,7 @@ import { useDock, useCommand } from "@/lib/use-dock";
 import { saveWorkspace } from "@/features/workspace/api/workspace";
 import { syncStatus } from "@/lib/sync";
 import { compileFilter, compileSearch, taskComparator } from "@dock/core/tasks";
-import type { Item } from "@dock/contracts";
+import { appBrand, type Item } from "@dock/contracts";
 import { useMutation } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import * as Crypto from "expo-crypto";
@@ -19,6 +19,7 @@ import {
   ActivityIndicator,
   AppState,
   FlatList,
+  Image,
   ScrollView,
   View,
 } from "react-native";
@@ -27,7 +28,7 @@ import { ItemRow } from "./item-row";
 import { useSetTaskDone } from "../mutations/mutations";
 
 export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const query = useDock(),
     toggle = useSetTaskDone(),
     command = useCommand();
@@ -175,12 +176,8 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
       <View className="gap-4 px-5 pb-4 pt-5">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <Icon
-              name="file-tray-stacked-outline"
-              className="text-primary"
-              size={24}
-            />
-            <Text className="text-xl font-semibold">Dock</Text>
+            <Image source={require("../../../assets/icon.png")} style={{ width: 32, height: 32 }} accessibilityIgnoresInvertColors />
+            <Text className="text-xl font-semibold">{i18n.language === "ar" ? appBrand.arabicName : appBrand.name}</Text>
           </View>
           <Button
             variant="ghost"

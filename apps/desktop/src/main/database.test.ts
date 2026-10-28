@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { commandSchema, type ItemInput } from "@dock/contracts";
-import { DockDatabase } from "./database.ts";
+import { spawnSync } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
+import { appBrand, commandSchema, type ItemInput } from "@dock/contracts";
+import { DockDatabase, openLocalDatabase } from "./database.ts";
 
 function save(
   database: DockDatabase,
@@ -191,4 +193,77 @@ test("invalid note links and recurrence fail before data can change", () => {
   } finally {
     database.close();
   }
+});
+
+test("branded database startup recovers legacy WAL data and preserves pending sync state", () => {
+  assert.ok(process.env.DOCK_TEST_ROOT);
+  const directory = mkdtempSync(join(process.env.DOCK_TEST_ROOT, "database-name-"));
+  const oldPath = join(directory, "dock.sqlite");
+  const newPath = join(directory, appBrand.databaseFilename);
+  const fixture = spawnSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", `
+    import { DockDatabase } from ${JSON.stringify(new URL("./database.ts", import.meta.url).href)};
+    import { DatabaseSync } from 'node:sqlite';
+    import { commandSchema } from ${JSON.stringify(new URL("../../../../packages/contracts/src/index.ts", import.meta.url).href)};
+    import { writeFileSync } from 'node:fs';
+    import { join } from 'node:path';
+    const directory = process.argv[1];
+    const database = new DockDatabase(join(directory, 'dock.sqlite'));
+    database.execute(commandSchema.parse({ type: 'item.save', item: { kind: 'note', title: 'Offline note', body: 'Recent WAL content' } }));
+    database.execute({ type: 'settings.save', settings: { ...database.snapshot().settings, density: 'comfortable' } });
+    database.bindSyncAccount('https://rivnote-sync.najjarnassim1995.workers.dev', '00000000-0000-4000-8000-000000000001');
+    new DatabaseSync(join(directory, 'dock.sqlite')).prepare("INSERT INTO sync_meta(key,value) VALUES('cursor','147')").run();
+    writeFileSync(join(directory, 'before.json'), JSON.stringify({ items: database.snapshot().items, settings: database.snapshot().settings, pending: database.pendingChanges(), account: database.syncAccount() }));
+    process.kill(process.pid, 'SIGKILL');
+  `, directory], { encoding: "utf8" });
+  let database: DockDatabase | undefined;
+  try {
+    assert.equal(fixture.signal, "SIGKILL", fixture.stderr);
+    assert.ok(statSync(oldPath + "-wal").size > 0);
+    const before = JSON.parse(readFileSync(join(directory, "before.json"), "utf8"));
+    database = openLocalDatabase(directory);
+    assert.equal(existsSync(oldPath), false);
+    assert.equal(existsSync(newPath), true);
+    assert.deepEqual(database.snapshot().items, before.items);
+    assert.deepEqual(database.snapshot().settings, before.settings);
+    assert.deepEqual(database.pendingChanges(), before.pending);
+    assert.deepEqual(database.syncAccount(), before.account);
+    assert.equal(database.syncCursor(), 147);
+    database.close();
+    database = openLocalDatabase(directory);
+    assert.equal(database.snapshot().items[0]!.body, "Recent WAL content");
+    assert.deepEqual(database.pendingChanges(), before.pending);
+  } finally { database?.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("branded database startup keeps an existing branded database and leaves legacy data intact", () => {
+  assert.ok(process.env.DOCK_TEST_ROOT);
+  const directory = mkdtempSync(join(process.env.DOCK_TEST_ROOT, "database-existing-"));
+  let database = openLocalDatabase(directory);
+  try {
+    save(database, { kind: "note", title: "Current Rivnote data" });
+    database.close();
+    const legacy = new DockDatabase(join(directory, "dock.sqlite"));
+    try { save(legacy, { kind: "note", title: "Separate legacy data" }); } finally { legacy.close(); }
+    database = openLocalDatabase(directory);
+    assert.equal(database.snapshot().items[0]!.title, "Current Rivnote data");
+    const preserved = new DockDatabase(join(directory, "dock.sqlite"));
+    try { assert.equal(preserved.snapshot().items[0]!.title, "Separate legacy data"); } finally { preserved.close(); }
+  } finally { database.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("branded database startup refuses a busy legacy checkpoint without creating a replacement", () => {
+  assert.ok(process.env.DOCK_TEST_ROOT);
+  const directory = mkdtempSync(join(process.env.DOCK_TEST_ROOT, "database-busy-"));
+  const path = join(directory, "dock.sqlite");
+  const writer = new DatabaseSync(path);
+  let reader: DatabaseSync | undefined;
+  try {
+    writer.exec("PRAGMA journal_mode=WAL; CREATE TABLE fixture(value TEXT); INSERT INTO fixture VALUES('before')");
+    reader = new DatabaseSync(path);
+    reader.exec("BEGIN; SELECT * FROM fixture");
+    writer.exec("INSERT INTO fixture VALUES('recent WAL write')");
+    assert.throws(() => openLocalDatabase(directory), /database is busy/);
+    assert.equal(existsSync(join(directory, appBrand.databaseFilename)), false);
+    assert.equal(writer.prepare("SELECT COUNT(*) AS count FROM fixture").get()!.count, 2);
+  } finally { reader?.close(); writer.close(); rmSync(directory, { recursive: true, force: true }); }
 });

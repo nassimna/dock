@@ -1,8 +1,8 @@
 import type { ExpoConfig } from "expo/config";
 
 const variants = {
-  development: { name: "Dock (dev)", applicationId: "net.devexa.dock.dev" },
-  production: { name: "Dock", applicationId: "net.devexa.dock" },
+  development: { name: "Rivnote (dev)", applicationId: "net.devexa.dock.dev" },
+  production: { name: "Rivnote", applicationId: "net.devexa.dock" },
 } as const;
 const variant = process.env.APP_VARIANT ?? "development";
 if (!Object.hasOwn(variants, variant)) {
@@ -15,7 +15,7 @@ const selected = variants[variant as keyof typeof variants];
 const config: ExpoConfig = {
   name: selected.name,
   slug: "dock-mobile",
-  version: "0.1.2",
+  version: "0.2.2",
   scheme: "dockmobile",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
@@ -24,7 +24,7 @@ const config: ExpoConfig = {
   ios: { supportsTablet: true, bundleIdentifier: selected.applicationId },
   android: {
     package: selected.applicationId,
-    versionCode: 3,
+    versionCode: 6,
     edgeToEdgeEnabled: true,
     blockedPermissions: [
       "android.permission.RECORD_AUDIO",

@@ -2,6 +2,24 @@ import type { Settings } from "@dock/contracts";
 type Colors = Settings["themeColors"]["dark"];
 
 export const colorPresets = {
+  River: {
+    dark: {
+      background: "#101c27",
+      card: "#192b38",
+      foreground: "#edf8f6",
+      mutedForeground: "#a0b9c3",
+      border: "#304854",
+      primary: "#5ae0c5",
+    },
+    light: {
+      background: "#ffffff",
+      card: "#f1f8f8",
+      foreground: "#122c38",
+      mutedForeground: "#536f7b",
+      border: "#d2e3e5",
+      primary: "#087d70",
+    },
+  },
   Graphite: {
     dark: {
       background: "#17191f",

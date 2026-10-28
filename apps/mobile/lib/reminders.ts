@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import dayjs from "dayjs";
 import { getSnapshot, notifyChanged } from "./database";
 import { storage } from "./storage";
+import { appBrand } from "@dock/contracts";
 
 type Planned = {
   notificationId: string;
@@ -57,7 +58,7 @@ export function reconcileReminders(force = false) {
       fingerprint = nextFingerprint;
       if (!permission.granted) return;
       await Notifications.setNotificationChannelAsync("dock-reminders", {
-        name: "Dock",
+        name: appBrand.name,
         importance: Notifications.AndroidImportance.HIGH,
       });
       const plans = JSON.parse(storage.getString(PLAN_KEY) ?? "{}") as Record<
@@ -133,7 +134,7 @@ export function reconcileReminders(force = false) {
         const notificationId = await Notifications.scheduleNotificationAsync({
           identifier: `dock:${key}`,
           content: {
-            title: "Dock",
+            title: appBrand.name,
             body: target.title,
             data: { itemId: target.itemId },
             sound: true,
@@ -170,7 +171,7 @@ export function reconcileReminders(force = false) {
 
 export async function enableReminders() {
   await Notifications.setNotificationChannelAsync("dock-reminders", {
-    name: "Dock",
+    name: appBrand.name,
     importance: Notifications.AndroidImportance.HIGH,
   });
   const permission = await Notifications.requestPermissionsAsync();

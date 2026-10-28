@@ -1,8 +1,8 @@
-# Dock
+# Rivnote
 
-A desktop app for quickly capturing tasks and notes. The desktop stores everything locally in SQLite. An optional Cloudflare sync backend and an Android mobile client are included.
+Rivnote (ريفنوت) keeps notes, tasks and projects together on desktop and Android. The desktop stores everything locally in SQLite. An optional Cloudflare sync backend and an Android mobile client are included.
 
-The desktop application runs locally with a real SQLite database, native quick capture, a tray, and a pinned mini window. No cloud account is needed.
+The desktop application runs locally with a real SQLite database, native quick capture, a tray, and a pinned mini window. An account is optional for local use. Create an account with email and a password in Sync across devices to use the same data on mobile and desktop; no invite or server setup is needed.
 
 ## Development
 
@@ -99,11 +99,13 @@ Todoist CSV import supports quoted/multiline fields, sections, subtasks, priorit
 
 ## App updates
 
-Installed builds check Dock’s GitHub releases at startup and every six hours when **Check and download updates automatically** is enabled in Preferences. A small update icon appears in the main window and sticky window after a newer version is found. Downloads show progress and retry actions; **Restart to update** waits for note saves and protects unfinished drafts.
+Installed builds check Rivnote’s GitHub releases at startup and every six hours when **Check and download updates automatically** is enabled in Preferences. A small update icon appears in the main window and sticky window after a newer version is found. Downloads show progress and retry actions; **Restart to update** waits for note saves and protects unfinished drafts.
+
+Tags matching `v*` run the Mac release workflow on Apple Silicon and Intel runners. It builds ad-hoc signed archives and verifies installer replacement, relaunch and local data preservation. Build artifacts stay separate from the published release until both architectures pass.
 
 `pnpm package:mac` produces a DMG, ZIP and `latest-mac.yml`. Publish the installers and metadata from the same versioned build together in a GitHub release. Packaging uses `--publish never`; it does not publish a release. Windows NSIS and Linux AppImage builds use electron-updater’s native installers.
 
-Developer ID signed Mac installations keep the native updater. Local ad-hoc Mac builds use a separate installer that verifies the ZIP checksum, bundle ID, version and code integrity before replacing Dock after shutdown. It preserves the data directory and restores the previous bundle if replacement or launch submission fails. This distribution trusts the configured release origin; production signing and notarization require a Developer ID setup. See [electron-builder’s update documentation](https://www.electron.build/v26/docs/features/auto-update/) (checked 23 October 2026).
+Developer ID signed Mac installations keep the native updater. Local ad-hoc Mac builds use a separate installer that verifies the ZIP checksum, bundle ID, version and code integrity before replacing Rivnote after shutdown. It preserves the data directory and restores the previous bundle if replacement or launch submission fails. This distribution trusts the configured release origin; production signing and notarization require a Developer ID setup. See [electron-builder’s update documentation](https://www.electron.build/v26/docs/features/auto-update/) (checked 23 October 2026).
 
 ## UI development
 
@@ -129,7 +131,7 @@ Run `pnpm dock help` for the full command list. The CLI uses a private token and
 
 ## Data and verification
 
-The database is `dock.sqlite` in the OS application-data directory under `Dock`: `~/.config/Dock` on Linux (or `$XDG_CONFIG_HOME/Dock`), `~/Library/Application Support/Dock` on macOS, and `%APPDATA%/Dock` on Windows. Preferences show the exact location. Preferences lists automatic daily JSON backups (up to 30 copies), creates manual backups, and imports JSON or Todoist project CSV files. Restore recovers missing/deleted records and preserves current items and preferences. Recently deleted tasks and notes can be restored for 30 days. Local attachment copies are stored alongside the database; JSON backups contain their references, so keep the attachments folder when moving a complete profile.
+The database is `rivnote.sqlite` in the OS application-data directory under `Dock`: `~/.config/Dock` on Linux (or `$XDG_CONFIG_HOME/Dock`), `~/Library/Application Support/Dock` on macOS, and `%APPDATA%/Dock` on Windows. Existing `dock.sqlite` files migrate automatically on startup, including changes in SQLite’s write-ahead log. Preferences show the exact location. Preferences lists automatic daily JSON backups (up to 30 copies), creates manual backups, and imports JSON or Todoist project CSV files. Restore recovers missing/deleted records and preserves current items and preferences. Recently deleted tasks and notes can be restored for 30 days. Local attachment copies are stored alongside the database; JSON backups contain their references, so keep the attachments folder when moving a complete profile.
 
 `pnpm test` runs focused SQLite, recurrence, reminder, local API, and sync checks in a disposable profile. `pnpm test:desktop` exercises the real production Electron build after `pnpm build`, including an app restart. On Linux it needs existing `Xvfb` and `xdotool` commands and uses an isolated display. Screenshots go to `.validation/screenshots` or `DOCK_EVIDENCE_DIR`. Test profiles and displays are removed afterward.
 

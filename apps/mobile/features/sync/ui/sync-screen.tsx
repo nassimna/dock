@@ -30,12 +30,14 @@ export function SyncScreen() {
   });
   const status = query.data?.status;
   const features = query.data?.features;
-  const [endpoint, setEndpoint] = useState(SYNC_ENDPOINT);
+  const [endpoint, setEndpoint] = useState<string>(SYNC_ENDPOINT);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [recoveryCode, setRecoveryCode] = useState("");
-  const [mode, setMode] = useState<"login" | "signup" | "recover">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "recover">(
+    syncStatus().endpoint ? "login" : "signup",
+  );
+  const [advanced, setAdvanced] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
   const action = useMutation({
     mutationFn: async (run: () => Promise<unknown>) => run(),
@@ -56,14 +58,12 @@ export function SyncScreen() {
               endpoint: status?.endpoint || endpoint,
               email,
               password,
-              inviteCode,
             },
       );
       if (parsed.type === "sync.recover") await syncFeature(parsed);
       else if (parsed.type === "sync.login" || parsed.type === "sync.signup")
         await authenticate(parsed);
       setPassword("");
-      setInviteCode("");
       setRecoveryCode("");
       setShowLogin(false);
     });
@@ -125,15 +125,8 @@ export function SyncScreen() {
         />
         {(!status?.connected || showLogin) && (
           <View className="gap-3">
-            <Text variant="label">{t("production.server")}</Text>
-            <Input
-              accessibilityLabel={t("production.server")}
-              value={status?.endpoint || endpoint}
-              editable={!status?.endpoint}
-              onChangeText={setEndpoint}
-              autoCapitalize="none"
-              keyboardType="url"
-            />
+            <Text variant="heading">{t(mode === "recover" ? "production.recover" : mode === "signup" ? "production.createAccountTitle" : "production.welcomeBack")}</Text>
+            <Text variant="muted">{t("production.accountSyncHint")}</Text>
             <Input
               accessibilityLabel={t("production.email")}
               placeholder={t("production.email")}
@@ -152,16 +145,6 @@ export function SyncScreen() {
               autoCapitalize="none"
               autoCorrect={false}
             />
-            {mode === "signup" && (
-              <Input
-                accessibilityLabel={t("production.invite")}
-                placeholder={t("production.invite")}
-                value={inviteCode}
-                onChangeText={setInviteCode}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            )}
             {mode === "recover" && (
               <Input
                 accessibilityLabel={t("production.recovery")}
@@ -196,6 +179,16 @@ export function SyncScreen() {
               label={t("production.recover")}
               onPress={() => setMode("recover")}
             />
+            <Text variant="muted">{t("production.accountDataHint")}</Text>
+            <Button variant="ghost" label={t("production.advancedServer")} onPress={() => setAdvanced(!advanced)} />
+            {advanced && <Input
+              accessibilityLabel={t("production.server")}
+              value={status?.endpoint || endpoint}
+              editable={!status?.endpoint}
+              onChangeText={setEndpoint}
+              autoCapitalize="none"
+              keyboardType="url"
+            />}
           </View>
         )}
         {status?.connected && (

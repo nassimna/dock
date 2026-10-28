@@ -36,7 +36,7 @@ export function Capture({ dispatch, act, snapshot }: { dispatch: Dispatch; snaps
   const destination = snapshot.workspace.projects.find(project => project.id === projectId)?.name ?? space;
   const optionSummary = kind === 'task' ? snapshot.workspace.projects.find(project => project.id === projectId)?.name : space !== 'Inbox' && space;
   useEffect(() => window.dock.onBeforeUpdate(async () => {
-    if (text.trim()) throw new Error("Save or clear your quick capture draft before restarting Dock.");
+    if (text.trim()) throw new Error("Save or clear your quick capture draft before restarting Rivnote.");
   }), [text]);
   useEffect(() => window.dock.onCapture(() => input.current?.focus()), []);
   useEffect(() => {

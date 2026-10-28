@@ -77,7 +77,7 @@ function createEngine() {
   return new DockSync(
     getDatabase(),
     notifyChanged,
-    Device.modelName ?? "Dock Android",
+    Device.modelName ?? "Rivnote Android",
     nativeFetch,
   );
 }

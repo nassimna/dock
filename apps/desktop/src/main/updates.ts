@@ -84,7 +84,7 @@ export class DockUpdates {
       await this.beforeInstall();
     } catch (error) {
       this.set("error", { version: this.current.version, retry: "install",
-        message: error instanceof Error ? error.message.replace(/^Error: /, "") : "Finish your drafts before restarting Dock." });
+        message: error instanceof Error ? error.message.replace(/^Error: /, "") : "Finish your drafts before restarting Rivnote." });
       return;
     }
     try { this.backend.quitAndInstall(false, true); }
@@ -108,7 +108,7 @@ export class DockUpdates {
       this.set("current", { message: "No update releases have been published yet." });
       return;
     }
-    console.error("Dock update failed:", error);
+    console.error("Rivnote update failed:", error);
     const invalidDownload = error instanceof Error && "code" in error && error.code === "ERR_DOCK_UPDATE_INVALID";
     const retry = invalidDownload ? "download" : this.current.status === "installing" ? "install" :
       this.current.status === "downloading" ? "download" : this.current.retry;

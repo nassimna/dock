@@ -4,6 +4,14 @@ import { syncFeatureCommandSchemas, syncFeaturesSchema, projectSchema, type Sync
 export * from "./local-services.ts";
 export * from "./sync-features.ts";
 
+export const appBrand = {
+  name: "Rivnote",
+  arabicName: "ريفنوت",
+  tagline: "Your notes. Your next step.",
+  databaseFilename: "rivnote.sqlite",
+  syncEndpoint: "https://rivnote-sync.najjarnassim1995.workers.dev",
+} as const;
+
 export const spaceSchema = z.enum(["Inbox", "Work", "Personal"]);
 export const recurrenceSchema = z.enum(["none", "daily", "weekly", "monthly", "weekdays", "custom"]);
 const scheduledAtSchema = z.iso
@@ -200,7 +208,7 @@ export type FloatingStyle = z.infer<typeof floatingStyleSchema>;
 export const settingsSchema = z.object({
   theme: z.enum(["dark", "light"]).default("dark"),
   uiPreset: z.enum(["ink", "precision", "native", "studio"]).default("ink"),
-  colorPreset: z.enum(["Graphite", "Forest", "Violet"]).default("Violet"),
+  colorPreset: z.enum(["River", "Graphite", "Forest", "Violet"]).default("River"),
   rounding: z.enum(["square", "subtle", "balanced", "rounded"]).default("subtle"),
   themeColors: z.object({
     dark: themeColorsSchema.default({}),
@@ -235,9 +243,7 @@ export const syncLoginSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).pipe(z.email()),
   password: z.string().min(12, "Use at least 12 characters for your password.").max(128),
 });
-export const syncSignupSchema = syncLoginSchema.extend({
-  inviteCode: z.string().min(1).max(256),
-});
+export const syncSignupSchema = syncLoginSchema;
 export const syncSessionSchema = z.object({
   accountId: z.uuid(),
   email: z.email(),
@@ -252,7 +258,12 @@ export const syncEndpointSchema = z.url().superRefine((value, context) => {
       url.username || url.password || url.search || url.hash || url.pathname !== "/") {
     context.addIssue({ code: "custom", message: "Use an HTTPS server address (HTTP is allowed only on localhost)." });
   }
-}).transform((value) => new URL(value).origin);
+}).transform((value) => {
+  const endpoint = new URL(value).origin;
+  return endpoint === "https://dock-sync.jood-b3d.workers.dev"
+    ? appBrand.syncEndpoint
+    : endpoint;
+});
 
 export const syncCredentialsSchema = syncSessionSchema.extend({ endpoint: syncEndpointSchema });
 export type SyncCredentials = z.infer<typeof syncCredentialsSchema>;
@@ -415,7 +426,7 @@ export const snapshotSchema = z.object({
   syncConflicts: z.array(syncConflictSchema).default([]),
   update: updateStateSchema,
   system: z.object({
-    name: z.string().default("Dock"),
+    name: z.string().default(appBrand.name),
     platform: z.string(),
     version: z.string(),
     dataPath: z.string(),

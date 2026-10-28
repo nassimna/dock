@@ -17,6 +17,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, 
 import { basename, extname, join, resolve } from "node:path";
 import electronUpdater from "electron-updater";
 import {
+  appBrand,
   parseCommand,
   syncCredentialsSchema,
   type Command,
@@ -24,7 +25,7 @@ import {
   type StoreSnapshot,
   type WindowRole,
 } from "@dock/contracts";
-import { DockDatabase } from "./database";
+import { DockDatabase, openLocalDatabase } from "./database";
 import { startLocalApi } from "./local-api";
 import { checkReminders } from "./reminders";
 import { LocalServices } from "./local-services";
@@ -33,10 +34,11 @@ import { DockUpdates } from "./updates";
 import { isAdHocMacBundle } from "./mac-update-installer";
 import { AdHocMacUpdater } from "./mac-updater";
 
-const appName = "Dock";
-app.setName(appName);
+const appName = appBrand.name;
+// Preserve the OS keychain identity and existing user data across the rebrand.
+app.setName("Dock");
 const dataDirectory =
-  process.env.DOCK_DATA_DIR ?? join(app.getPath("appData"), appName);
+  process.env.DOCK_DATA_DIR ?? join(app.getPath("appData"), "Dock");
 mkdirSync(dataDirectory, { recursive: true, mode: 0o700 });
 app.setPath("userData", dataDirectory);
 app.commandLine.appendSwitch("enable-features", "GlobalShortcutsPortal");
@@ -77,7 +79,7 @@ function snapshot(store: StoreSnapshot = database.snapshot()): Snapshot {
       name: appName,
       platform: process.platform,
       version: app.getVersion(),
-      dataPath: join(app.getPath("userData"), "dock.sqlite"),
+      dataPath: join(app.getPath("userData"), appBrand.databaseFilename),
       shortcutRegistered,
       topmostSupported,
       trayAvailable: tray !== null,
@@ -105,7 +107,7 @@ function saveFloatingPosition(): void {
   try {
     writeFileSync(`${floatingPositionPath}.tmp`, JSON.stringify(floatingPosition), { mode: 0o600 });
     renameSync(`${floatingPositionPath}.tmp`, floatingPositionPath);
-  } catch (error) { console.error("Dock could not save the floating icon position:", error); }
+  } catch (error) { console.error("Rivnote could not save the floating icon position:", error); }
 }
 
 function keepFloatingVisible(): void {
@@ -254,7 +256,7 @@ async function openWindow(role: WindowRole, announce = true): Promise<BrowserWin
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (URL.canParse(url) && ["http:", "https:", "mailto:"].includes(new URL(url).protocol))
-      void shell.openExternal(url).catch(error => console.error("Dock could not open link:", error));
+      void shell.openExternal(url).catch(error => console.error("Rivnote could not open link:", error));
     return { action: "deny" };
   });
   window.webContents.on("will-navigate", (event) => event.preventDefault());
@@ -314,7 +316,7 @@ function showNotification(title: string, body: string, taskId?: string): Promise
       if (!quitting) broadcast();
       resolve(shown);
     };
-    const timeout = setTimeout(() => finish(false, "The operating system did not confirm displaying the notification. Check Dock’s notification permissions."), 10_000);
+    const timeout = setTimeout(() => finish(false, "The operating system did not confirm displaying the notification. Check Rivnote’s notification permissions."), 10_000);
     notification.on("click", async () => {
       const main = await openWindow("main");
       if (taskId) main.webContents.send("dock:open-task", taskId);
@@ -322,7 +324,7 @@ function showNotification(title: string, body: string, taskId?: string): Promise
     notification.on("action", (_event, index) => {
       if (!taskId) return;
       void dispatch(index === 0 ? { type: "item.complete", id: taskId } : { type: "item.snooze", id: taskId, minutes: 10 })
-        .catch(error => console.error("Dock reminder action failed:", error));
+        .catch(error => console.error("Rivnote reminder action failed:", error));
     });
     notification.once("failed", (_event, error) => finish(false, String(error)));
     notification.once("show", () => finish(true));
@@ -343,7 +345,7 @@ async function tick(): Promise<void> {
     const remindersChanged = await checkReminders(database, item => showNotification(`${appName} reminder`, item.title, item.id), new Date(), localServices.reminders);
     if (!quitting && (backupChanged || remindersChanged)) broadcast();
   } catch (error) {
-    console.error("Dock reminder check failed:", error);
+    console.error("Rivnote reminder check failed:", error);
   } finally {
     checkingReminders = false;
   }
@@ -363,8 +365,8 @@ async function dispatch(
       sync.localChanged(false);
     } else if (command.type === "backup.import") {
       const result = await dialog.showOpenDialog(sender, {
-        title: command.format === "json" ? "Import Dock backup" : "Import Todoist CSV",
-        filters: [{ name: command.format === "json" ? "Dock backup" : "Todoist export", extensions: [command.format === "json" ? "json" : "csv"] }],
+        title: command.format === "json" ? "Import Rivnote backup" : "Import Todoist CSV",
+        filters: [{ name: command.format === "json" ? "Rivnote backup" : "Todoist export", extensions: [command.format === "json" ? "json" : "csv"] }],
         properties: ["openFile"],
       });
       if (!result.canceled && result.filePaths[0]) {
@@ -433,7 +435,7 @@ async function dispatch(
       if (command.action === "main" && command.view) window.webContents.send("dock:navigate", command.view);
     } else if (command.action === "export") {
       const result = await dialog.showSaveDialog({
-        title: "Export Dock data",
+        title: "Export Rivnote data",
         defaultPath: "dock-backup.json",
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
@@ -445,7 +447,7 @@ async function dispatch(
     } else if (command.action === "test-notification") {
       if (!await showNotification(appName, "Your reminders will appear here."))
         throw new Error(
-          "The operating system did not confirm displaying the test notification. Check Dock’s notification permissions.",
+          "The operating system did not confirm displaying the test notification. Check Rivnote’s notification permissions.",
         );
     } else if (sender) {
       if (command.action === "hide") {
@@ -526,12 +528,12 @@ if (!app.requestSingleInstanceLock()) {
     .then(async () => {
       const directory = app.getPath("userData");
       mkdirSync(directory, { recursive: true });
-      database = new DockDatabase(join(directory, "dock.sqlite"));
+      database = openLocalDatabase(directory);
       if (existsSync(floatingPositionPath)) {
         try {
           const position = JSON.parse(readFileSync(floatingPositionPath, "utf8"));
           if (validCoordinate(position?.x) && validCoordinate(position?.y)) floatingPosition = { x: position.x, y: position.y };
-        } catch (error) { console.error("Dock could not read the floating icon position:", error); }
+        } catch (error) { console.error("Rivnote could not read the floating icon position:", error); }
       }
       localServices = new LocalServices(directory, database);
       sync = new DockSync(database, broadcast);
@@ -599,12 +601,12 @@ if (!app.requestSingleInstanceLock()) {
             { label: "Mini window", click: () => void openWindow("mini") },
             { label: "Floating icon", click: () => void openWindow("floating") },
             { type: "separator" },
-            { label: "Quit Dock", click: () => app.quit() },
+            { label: "Quit Rivnote", click: () => app.quit() },
           ]),
         );
         tray.on("click", () => void openWindow("main"));
       } catch (error) {
-        console.error("Dock tray unavailable:", error);
+        console.error("Rivnote tray unavailable:", error);
       }
       await openWindow("main");
       if (settings.floatingAtStartup) await openWindow("floating");
@@ -618,7 +620,7 @@ if (!app.requestSingleInstanceLock()) {
     })
     .catch((error) => {
       dialog.showErrorBox(
-        "Dock could not start",
+        "Rivnote could not start",
         error instanceof Error ? error.message : String(error),
       );
       app.quit();
@@ -637,7 +639,7 @@ if (!app.requestSingleInstanceLock()) {
         .then(() => { quitting = true; app.quit(); })
         .catch(error => {
           preparingQuit = false;
-          void dialog.showMessageBox({ type: "warning", message: "Dock is still open", detail: error instanceof Error ? error.message : String(error) });
+          void dialog.showMessageBox({ type: "warning", message: "Rivnote is still open", detail: error instanceof Error ? error.message : String(error) });
         });
       return;
     }

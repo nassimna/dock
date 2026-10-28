@@ -1,4 +1,4 @@
-# Dock for Android
+# Rivnote for Android
 
 Expo54 / React Native0.81.5 mobile app using the e-commerce app's Expo Router,
 NativeWind, TanStack Query, MMKV, i18next and feature folder conventions. The
@@ -7,12 +7,14 @@ CSV import and color presets are shared with desktop through `@dock/core`.
 
 ## Use
 
-The production app is **Dock**, package `net.devexa.dock`, version0.1.2 (3).
-The default server is `https://dock-sync.jood-b3d.workers.dev`. Open Settings →
-Sync across devices, create an account with the private registration invite,
-and save the recovery code privately. Use that same server and account in
-Dock desktop. Sessions are kept in Android SecureStore; local data works
+The production app is **Rivnote**, package `net.devexa.dock`, version0.2.0 (4).
+The default server is `https://rivnote-sync.najjarnassim1995.workers.dev`. Open Settings →
+Sync across devices, create an account with your email and a password of at least 12 characters,
+and save the recovery code privately. No invite or server configuration is needed. Use that same server and account in
+Rivnote desktop. Sessions are kept in Android SecureStore; local data works
 without a connection and queued edits retry while the app is active.
+
+The local database is `rivnote.sqlite`. Existing `dock.sqlite` files migrate automatically on startup, preserving saved data and pending sync edits.
 
 Tasks, notes, private project metadata and shared projects sync. Attachment
 metadata syncs, but attachment files stay on the device where they were added,
@@ -106,3 +108,10 @@ Settings → Sync conflicts shows competing versions. Review or edit either vers
 then keep the current version, use the saved copy, or keep both. Decisions sync
 to updated clients; discarded copies move to Recently deleted. Stale choices are
 rejected. Older copies without a recorded original can safely be kept separately.
+
+## Upgrade identity
+
+Rivnote is the new name for Dock. The Android package, signing key, database,
+MMKV and SecureStore identities stay the same, so installing the signed update
+preserves local data and sessions. Existing theme choices are preserved; new
+profiles use the River navy/teal palette.

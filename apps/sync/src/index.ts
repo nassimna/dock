@@ -10,7 +10,6 @@ export interface Statement {
 }
 export interface SyncEnvironment {
   PASSWORD_PEPPER: string;
-  REGISTRATION_SECRET: string;
   AUTH_LIMITER: { limit(options: { key: string }): Promise<{ success: boolean }> };
   DB: {
     prepare(sql: string): Statement;
@@ -87,7 +86,7 @@ export default {
             .bind(hash, salt, replacementHash, account.id, suppliedHash),
           env.DB.prepare("DELETE FROM sessions WHERE account_id = ? AND EXISTS (SELECT 1 FROM accounts WHERE id = ? AND recovery_hash = ?)")
             .bind(account.id, account.id, replacementHash),
-          env.DB.prepare("INSERT INTO sessions(token_hash, account_id, expires_at, device_name) SELECT ?, id, ?, 'Recovered Dock desktop' FROM accounts WHERE id = ? AND recovery_hash = ?")
+          env.DB.prepare("INSERT INTO sessions(token_hash, account_id, expires_at, device_name) SELECT ?, id, ?, 'Recovered Rivnote desktop' FROM accounts WHERE id = ? AND recovery_hash = ?")
             .bind(tokenHash, expiresAt, account.id, replacementHash),
           env.DB.prepare("SELECT token_hash FROM sessions WHERE token_hash = ?").bind(tokenHash),
         ]);
@@ -105,7 +104,7 @@ export default {
         const { email, password } = parsed.data;
         if (!(await env.AUTH_LIMITER.limit({ key: `dock:auth:email:${email}` })).success)
           return json({ error: "Too many sign-in attempts. Try again in a minute." }, 429);
-        if (!env.PASSWORD_PEPPER || !env.REGISTRATION_SECRET) throw new Error("Missing authentication secrets.");
+        if (!env.PASSWORD_PEPPER) throw new Error("Missing authentication secret.");
         const existing = await env.DB.prepare("SELECT id, password_hash, password_salt FROM accounts WHERE email = ?")
           .bind(email).first<{ id: string; password_hash: string; password_salt: string }>();
         let accountId: string;
@@ -113,9 +112,6 @@ export default {
         let salt = "";
         const recoveryCode = signup ? randomSecret() : "";
         if (signup) {
-          const invite = syncSignupSchema.parse(body).inviteCode;
-          if (!equal(await sha256(invite), await sha256(env.REGISTRATION_SECRET)))
-            return json({ error: "The invite code is incorrect." }, 403);
           if (existing) return json({ error: "Unable to create this account. Try signing in." }, 409);
           accountId = crypto.randomUUID();
           salt = randomSecret();
@@ -133,10 +129,10 @@ export default {
           "INSERT INTO accounts(id, email, password_hash, password_salt, recovery_hash) VALUES(?, ?, ?, ?, ?) ON CONFLICT(email) DO NOTHING",
         ).bind(accountId, email, passwordHash, salt, await sha256(recoveryCode))] : [];
         const deviceName = typeof (body as { deviceName?: unknown }).deviceName === "string"
-          ? String((body as { deviceName: string }).deviceName).trim().slice(0, 100) : "Dock desktop";
+          ? String((body as { deviceName: string }).deviceName).trim().slice(0, 100) : "Rivnote desktop";
         statements.push(
           env.DB.prepare("DELETE FROM sessions WHERE account_id = ? AND expires_at <= ?").bind(accountId, new Date().toISOString()),
-          env.DB.prepare("INSERT INTO sessions(token_hash, account_id, expires_at, device_name) SELECT ?, id, ?, ? FROM accounts WHERE id = ?").bind(tokenHash, expiresAt, deviceName || "Dock desktop", accountId),
+          env.DB.prepare("INSERT INTO sessions(token_hash, account_id, expires_at, device_name) SELECT ?, id, ?, ? FROM accounts WHERE id = ?").bind(tokenHash, expiresAt, deviceName || "Rivnote desktop", accountId),
           env.DB.prepare("SELECT account_id FROM sessions WHERE token_hash = ?").bind(tokenHash),
         );
         const results = await env.DB.batch<{ account_id: string }>(statements);
@@ -253,7 +249,7 @@ export default {
         const project = await env.DB.prepare("SELECT owner_id FROM shared_projects WHERE id = ?").bind(input.projectId).first<{ owner_id: string }>();
         if (!project || project.owner_id !== accountId) return json({ error: "Only the project owner can manage members." }, 403);
         const member = await env.DB.prepare("SELECT id FROM accounts WHERE email = ?").bind(input.email).first<{ id: string }>();
-        if (!member) return json({ error: "That person must create an account on this Dock Sync server first." }, 404);
+        if (!member) return json({ error: "That person must create an account on this Rivnote Sync server first." }, 404);
         if (member.id === accountId) return json({ error: "The owner already has access." }, 400);
         const statements = input.type === "sync.project.invite"
           ? [env.DB.prepare("INSERT OR IGNORE INTO project_members(project_id, account_id) VALUES(?, ?)").bind(input.projectId, member.id)]

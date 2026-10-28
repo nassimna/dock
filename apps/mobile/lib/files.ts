@@ -48,7 +48,7 @@ export async function listBackups() {
 
 export async function restoreBackup(name: string) {
   if (!/^dock-[\dT-]+\.json$/.test(name))
-    throw new Error("Choose a Dock backup.");
+    throw new Error("Choose a Rivnote backup.");
   const value = await FileSystem.readAsStringAsync(directory("backups") + name);
   const count = getDatabase().restoreBackup(
     backupSchema.parse(JSON.parse(value)),

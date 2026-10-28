@@ -87,7 +87,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ThemeContextValue>(() => {
     const colors = {
-      ...colorPresets[settings?.colorPreset ?? "Forest"][scheme],
+      ...colorPresets[settings?.colorPreset ?? "River"][scheme],
       ...settings?.themeColors[scheme],
     };
     const radius = { square: 0, subtle: 3, balanced: 6, rounded: 10 }[

@@ -1,1 +1,3 @@
-export const SYNC_ENDPOINT = "https://dock-sync.jood-b3d.workers.dev";
+import { appBrand } from "@dock/contracts";
+
+export const SYNC_ENDPOINT = appBrand.syncEndpoint;

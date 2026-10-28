@@ -62,7 +62,7 @@ export async function checkReminders(
     const previous = journal.get(key);
     if (previous?.status === "pending" && previous.attempts >= 3 && previous.nextAttemptAt && previous.nextAttemptAt <= now.toISOString()) {
       changed = true;
-      journal.put({ ...previous, status: "failed", nextAttemptAt: null, error: "Dock stopped before display was confirmed. Retry this reminder manually." });
+      journal.put({ ...previous, status: "failed", nextAttemptAt: null, error: "Rivnote stopped before display was confirmed. Retry this reminder manually." });
     }
     if (previous?.status === "shown" || (previous?.attempts ?? 0) >= 3 ||
         (previous?.nextAttemptAt && previous.nextAttemptAt > now.toISOString())) continue;

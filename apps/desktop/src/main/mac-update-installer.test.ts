@@ -35,7 +35,7 @@ test("Mac update preparation rejects another application's archive and removes o
     const archive = join(directory, "update.zip");
     await execute("/usr/bin/ditto", ["-c", "-k", "--keepParent", replacement, archive]);
     const sha = createHash("sha512").update(readFileSync(archive)).digest("base64");
-    await assert.rejects(stageMacUpdate(installed, archive, "0.1.1", sha), /does not match Dock/);
+    await assert.rejects(stageMacUpdate(installed, archive, "0.1.1", sha), /does not match Rivnote/);
     assert.ok(readdirSync(directory).includes("Dock.app"));
     assert.equal(readdirSync(directory).some(name => name.startsWith(".dock-update-")), false);
   } finally { rmSync(directory, { recursive: true }); }

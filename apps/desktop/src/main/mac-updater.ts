@@ -40,7 +40,7 @@ export class AdHocMacUpdater extends electronUpdater.AppUpdater {
         this.downloaded = undefined;
         this.downloadedUpdateHelper = null;
       }
-      this.dispatchError(error instanceof Error ? error : new Error("Dock could not prepare the update."));
+      this.dispatchError(error instanceof Error ? error : new Error("Rivnote could not prepare the update."));
     });
   }
 
@@ -57,7 +57,7 @@ export class AdHocMacUpdater extends electronUpdater.AppUpdater {
         app.removeListener("quit", commit);
         if (!committed) {
           this.installing = false;
-          this.dispatchError(new Error("The update could not finish shutting down Dock."));
+          this.dispatchError(new Error("The update could not finish shutting down Rivnote."));
         }
       });
       app.once("quit", commit);

@@ -12,12 +12,12 @@ const colorFields = [
 ] as const;
 const defaults = settingsSchema.parse({});
 
-/** A miniature Dock window drawn with the given settings, used by the tiles and the live preview. */
+/** A miniature Rivnote window drawn with the given settings, used by the tiles and the live preview. */
 function MiniWindow({ settings, detailed = false }: { settings: Preferences; detailed?: boolean }) {
   const rail = settings.uiPreset === "ink";
   return (
     <div className={`mini-window ${detailed ? "detailed" : ""} ${settings.density}`} style={themeStyle(settings)} aria-hidden="true">
-      <div className="mini-window-bar"><i /><i /><i />{detailed && <span>Dock</span>}</div>
+      <div className="mini-window-bar"><i /><i /><i />{detailed && <span>Rivnote</span>}</div>
       <div className={`mini-window-body ${rail ? "rail" : ""} ${settings.uiPreset}`}>
         <div className="mini-window-sidebar">
           {["Today", "Inbox", "Upcoming"].map((label, index) => <span key={label} className={index === 0 ? "active" : ""}>
@@ -96,7 +96,7 @@ export function AppearanceSettings({ draft, setDraft, snapshot, act }: {
       <div className="appearance-header">
         <div>
           <h2><Palette size="1.0625rem" /> Appearance</h2>
-          <p>Changes apply instantly across Dock and stay on this device.</p>
+          <p>Changes apply instantly across Rivnote and stay on this device.</p>
         </div>
         <Button type="button" variant="ghost" size="xs" onClick={() => setDraft({ ...draft,
           uiPreset: defaults.uiPreset, colorPreset: defaults.colorPreset, rounding: defaults.rounding, density: defaults.density,
@@ -106,7 +106,7 @@ export function AppearanceSettings({ draft, setDraft, snapshot, act }: {
       </div>
       <div className="appearance-layout">
         <div className="appearance-groups">
-          <Group title="Theme" description="Switches every Dock window.">
+          <Group title="Theme" description="Switches every Rivnote window.">
             <div className="appearance-tiles two">
               {(["dark", "light"] as const).map(theme => <Tile key={theme} label={theme === "dark" ? "Dark" : "Light"} selected={mode === theme}
                 onSelect={() => act({ type: "settings.save", settings: { ...snapshot.settings, theme } })}>

@@ -1,11 +1,11 @@
 {
-  "name": "dock-sync",
+  "name": "rivnote-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-08",
   "ratelimits": [
     {
       "name": "AUTH_LIMITER",
-      "namespace_id": "20261027",
+      "namespace_id": "20261028",
       "simple": {
         "limit": 10,
         "period": 60
@@ -15,10 +15,10 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "dock-sync",
-      "database_id": "b507c62f-7426-4fb7-851f-98ece0d08ffd",
+      "database_name": "rivnote-sync",
+      "database_id": "6d82ba15-dc6f-4fd6-82e0-039d177bcbf0",
       "migrations_dir": "migrations"
     }
   ],
-  "account_id": "b3d8527506a267244ffc2ed8c30da9b8"
+  "account_id": "666ee3e55d6cef8ebeb2804d959cad8e"
 }

@@ -58,6 +58,7 @@ import { SharedProjectSettings } from "./SharedProjectSettings";
 import { UpdateNotice } from "./Updates";
 import { SyncConflicts } from "./SyncConflicts";
 import { useDock, type Act } from "./state";
+import brandMark from "../../../resources/brand.svg";
 
 type View =
   "today" | "inbox" | "all" | "starred" | "notes" | "schedule" | "done" | "settings" | "project" | "filters" | "filter" | "progress" | "trash";
@@ -95,7 +96,7 @@ function Chrome({
   return (
     <header className="chrome">
       <div className="chrome-brand">
-        {role === "capture" ? <Zap size="1rem" /> : <ListFilter size="1.1875rem" />}
+        {role === "capture" ? <Zap size="1rem" /> : <img className="brand-mark" src={brandMark} alt="" />}
         <strong>{role === "capture" ? "Quick capture" : role === "mini" ? "Sticky window" : snapshot.system.name}</strong>
         {role === "capture" && <Shortcut value={snapshot.settings.shortcut} />}
       </div>
@@ -336,7 +337,7 @@ export function App() {
   }, [snapshot?.undo?.token, feedback]);
   useEffect(() => window.dock.onBeforeUpdate(async () => {
     if (editing !== undefined || projectEditor !== undefined || templatesOpen || captureTitle.trim())
-      throw new Error("Finish or close your task draft before restarting Dock.");
+      throw new Error("Finish or close your task draft before restarting Rivnote.");
   }), [editing, projectEditor, templatesOpen, captureTitle]);
   useEffect(() => () => {
     completionTimers.current.forEach(timer => window.clearTimeout(timer));
@@ -488,8 +489,8 @@ export function App() {
   if (!snapshot)
     return role === "floating" ? null : (
       <div className="startup">
-        <ListFilter size="1.75rem" />
-        <h1>Dock</h1>
+        <img className="brand-mark brand-mark-large" src={brandMark} alt="" />
+        <h1>Rivnote</h1>
         <p role="status">{error || "Opening your local workspace…"}</p>
         {error && (
           <Button variant="outline"
@@ -607,7 +608,7 @@ export function App() {
       : view === "project" ? project?.name ?? 'Project'
       : view === "filter" ? savedFilter?.name ?? 'Saved filter'
       : view === "trash" ? 'Recently deleted'
-      : navigation.find((item) => item.id === view)?.title ?? 'Dock';
+      : navigation.find((item) => item.id === view)?.title ?? 'Rivnote';
   function navigate(destination: View) {
     setQuery(""); setSearchOpen(false); setView(destination);
   }
@@ -932,6 +933,9 @@ export function App() {
               <span className="status-dot" /> Saved on this{" "}
               {snapshot.system.platform === "darwin" ? "Mac" : "computer"} · Works
               offline
+              {!snapshot.sync.connected && <Button variant="ghost" className="sync-status" onClick={() => navigate("settings")}>
+                · {snapshot.sync.endpoint ? "Sign in to sync" : "Create account"}
+              </Button>}
               {(snapshot.sync.connected || snapshot.sync.conflicts > 0) && (
                 <Button variant="ghost" className="sync-status" onClick={() => snapshot.sync.conflicts ? setConflictsOpen(true) : navigate("settings")}>
                   · {snapshot.sync.conflicts ? "Review conflicts" : snapshot.sync.phase === "synced" ? "Synced" :

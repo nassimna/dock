@@ -25,7 +25,7 @@ function save(database: DockDatabase, item: ItemInput): Item {
 
 const password = "test-only-password-2026";
 
-test("email/password sessions isolate accounts; sync writes use CAS and durable idempotency receipts", async () => {
+test("public email/password signup and sessions isolate accounts; sync writes use CAS and durable idempotency receipts", async () => {
   const root = directory();
   const server = await startSyncFixture(root);
   const request = (path: string, body?: unknown, token?: string) => fetch(server.endpoint + path, {
@@ -33,10 +33,11 @@ test("email/password sessions isolate accounts; sync writes use CAS and durable 
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   try {
-    assert.equal((await request("/auth/signup", { email: "first@example.com", password, inviteCode: "wrong" })).status, 403);
-    const first = syncSessionSchema.parse(await (await request("/auth/signup", { email: " First@Example.com ", password, inviteCode: server.env.REGISTRATION_SECRET })).json());
+    assert.equal((await request("/auth/signup", { email: "not-an-email", password })).status, 400);
+    const first = syncSessionSchema.parse(await (await request("/auth/signup", { email: " First@Example.com ", password })).json());
     assert.equal(first.email, "first@example.com");
-    const second = syncSessionSchema.parse(await (await request("/auth/signup", { email: "second@example.com", password, inviteCode: server.env.REGISTRATION_SECRET })).json());
+    assert.equal((await request("/auth/signup", { email: "first@example.com", password })).status, 409);
+    const second = syncSessionSchema.parse(await (await request("/auth/signup", { email: "second@example.com", password })).json());
     assert.equal((await request("/auth/login", { email: "first@example.com", password: "incorrect-password" })).status, 401);
     const stored = server.database.prepare("SELECT * FROM accounts WHERE id = ?").get(first.accountId)!;
     assert.notEqual(stored.password_hash, password);
@@ -107,7 +108,7 @@ test("two offline clients converge after restart, preserve conflicts, sync delet
     const markdown = "# Shared note\n\nKeep **formatting**.\n\n- [x] Offline\n\n[Dock](https://github.com/nassimna/dock)";
     const note = save(a, { kind: "note", title: "Shared note", body: markdown });
     const task = save(a, { kind: "task", title: "Weekly review", linkedNoteId: note.id, recurrence: "weekly", scheduledAt: "2030-10-08T12:00:00.000Z" });
-    const credentialsA = await syncA.authenticate({ type: "sync.signup", endpoint: server.endpoint, email: "sync@example.com", password, inviteCode: server.env.REGISTRATION_SECRET });
+    const credentialsA = await syncA.authenticate({ type: "sync.signup", endpoint: server.endpoint, email: "sync@example.com", password });
     syncA.restore(credentialsA);
     const credentialsB = await syncB.authenticate({ type: "sync.login", endpoint: server.endpoint, email: "sync@example.com", password });
     syncB.restore(credentialsB);

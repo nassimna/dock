@@ -36,7 +36,7 @@ export function Settings({
   }
   const changed = JSON.stringify(preferences) !== JSON.stringify(snapshot.settings);
   useEffect(() => window.dock.onBeforeUpdate(async () => {
-    if (changed) throw new Error("Wait for your preferences to finish saving before restarting Dock.");
+    if (changed) throw new Error("Wait for your preferences to finish saving before restarting Rivnote.");
   }));
   // Changes save automatically once input pauses; invalid values wait until they are corrected.
   useEffect(() => {
@@ -85,13 +85,14 @@ export function Settings({
   }
   return (
     <div className="settings">
+      <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch} onReviewConflicts={onReviewConflicts} />
       <form onSubmit={event => event.preventDefault()}>
         <div className="preferences-save">
           <span role="status">{status || "Changes save automatically."}</span>
         </div>
         <section aria-label="Floating icon settings">
           <h2><ListFilter size="1.0625rem" /> Floating icon</h2>
-          <p>Small and always available while Dock runs. Click to toggle tasks, or drag the icon to move it.</p>
+          <p>Small and always available while Rivnote runs. Click to toggle tasks, or drag the icon to move it.</p>
           <div className="floating-settings-layout">
             <div className="fields">
               <Label className="field">Size · {draft.floating.size}px
@@ -172,7 +173,7 @@ export function Settings({
           <h2>
             <Bell size="1.0625rem" /> Reminders
           </h2>
-          <p>Notifications run while Dock is open or in the tray.</p>
+          <p>Notifications run while Rivnote is open or in the tray.</p>
           <Label className="checkbox-label">
             <Checkbox
               checked={draft.quietHours}
@@ -232,7 +233,7 @@ export function Settings({
                 setDraft({ ...draft, launchAtLogin: checked === true })
               }
             />{" "}
-            Start Dock at login
+            Start Rivnote at login
           </Label>
           {!snapshot.system.launchAtLoginSupported && (
             <small className="muted">
@@ -244,7 +245,7 @@ export function Settings({
               checked={draft.floatingAtStartup}
               onCheckedChange={checked => setDraft({ ...draft, floatingAtStartup: checked === true })}
             />{" "}
-            Show floating icon when Dock starts
+            Show floating icon when Rivnote starts
           </Label>
           <small className="muted">Click the icon to view tasks. Drag it to move, or right-click to customize.</small>
           <Label className="checkbox-label">
@@ -254,7 +255,7 @@ export function Settings({
                 setDraft({ ...draft, openMiniAtStartup: checked === true })
               }
             />{" "}
-            Open sticky window when Dock starts
+            Open sticky window when Rivnote starts
           </Label>
           <small className="muted">
             Starts with tasks expanded. Use the sticky window’s pin to keep the panel above other apps.
@@ -273,11 +274,10 @@ export function Settings({
               onCheckedChange={checked => setDraft({ ...draft, automaticUpdates: checked === true })} />
             Check and download updates automatically
           </Label>
-          <p>Dock only restarts when you choose to install an update.</p>
+          <p>Rivnote only restarts when you choose to install an update.</p>
           <UpdateDetails update={snapshot.update} version={snapshot.system.version} act={act} />
         </section>
       </form>
-      <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch} onReviewConflicts={onReviewConflicts} />
       <DataSettings snapshot={snapshot} dispatch={dispatch} />
       <section>
         <h2>
@@ -285,7 +285,7 @@ export function Settings({
         </h2>
         <p>
           Tasks, notes, and preferences are saved on this computer, even offline.
-          Changes appear immediately in your other Dock windows. Connect your
+          Changes appear immediately in your other Rivnote windows. Connect your
           account above to sync with your other devices.
         </p>
         <Input
@@ -312,7 +312,7 @@ export function Settings({
           Work{"\n"}pnpm dock note "Call notes" --body "Follow up Friday"
         </pre>
         <small className="muted">
-          Dock {snapshot.system.version} · Local desktop edition
+          Rivnote {snapshot.system.version} · Local desktop edition
         </small>
       </section>
     </div>

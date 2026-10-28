@@ -36,7 +36,7 @@ test("local backups recover missing tasks and CSV imports hierarchy and prioriti
     const count = snapshot.items.length;
     assert.throws(() => services.importTodoist("TYPE,CONTENT,DATE\ntask,Invalid,every someday", "Bad"), /unsupported/);
     assert.equal(database.snapshot().items.length, count);
-    assert.throws(() => services.restore("../dock.sqlite"), /Choose a Dock backup/);
+    assert.throws(() => services.restore("../dock.sqlite"), /Choose a Rivnote backup/);
   } finally { database.close(); rmSync(directory, { recursive: true }); }
 });
 

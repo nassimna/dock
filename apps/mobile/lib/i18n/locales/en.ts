@@ -96,8 +96,8 @@ export const en = {
     arabic: "العربية",
     storage: "Your space, on this device",
     storageBody:
-      "Tasks and notes are saved locally and work offline. Connect Dock Sync to use the same account on Android and desktop.",
-    version: "Dock mobile · {{version}}",
+      "Tasks and notes are saved locally and work offline. Connect Rivnote Sync to use the same account on Android and desktop.",
+    version: "Rivnote mobile · {{version}}",
   },
   errors: {
     load: "Couldn’t read your saved items. They have not been changed. Try again.",

@@ -1,0 +1,64 @@
+name: Build Mac release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    env:
+      DOCK_TEST_ROOT: ${{ github.workspace }}/.validation/mac-ci
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: pnpm/action-setup@f40ffcd9367d9f12939873eb1018b921a783ffaa # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.22.3
+          cache: pnpm
+      - name: Install desktop workspace
+        run: pnpm install --frozen-lockfile --filter @dock/desktop... --filter dock
+      - name: Check desktop and updater
+        run: |
+          mkdir -p "$DOCK_TEST_ROOT"
+          pnpm typecheck
+          node --experimental-strip-types --test apps/desktop/src/main/database.test.ts apps/desktop/src/main/mac-update-installer.test.ts apps/desktop/src/main/updates.test.ts
+      - name: Package signed Mac archives
+        run: |
+          pnpm build
+          pnpm --filter @dock/desktop exec electron-builder --mac dmg zip --${{ matrix.arch }} --publish never --config.mac.identity=-
+      - name: Verify packaged app and installer
+        run: node --experimental-strip-types scripts/verify-mac-release.mjs ${{ matrix.arch }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-release-${{ matrix.arch }}
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.zip
+            apps/desktop/release/*.blockmap
+            apps/desktop/release/latest-mac.yml
+          if-no-files-found: error
+          retention-days: 3
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: mac-verification-${{ matrix.arch }}
+          path: |
+            .validation/mac-release-${{ matrix.arch }}/*.json
+            .validation/mac-release-${{ matrix.arch }}/*.png
+          if-no-files-found: ignore
+          retention-days: 3

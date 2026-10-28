@@ -64,9 +64,9 @@ export class LocalServices {
   }
 
   restore(name: string): void {
-    if (!backupName.test(name)) throw new Error("Choose a Dock backup from the list.");
+    if (!backupName.test(name)) throw new Error("Choose a Rivnote backup from the list.");
     const path = join(this.backupsDirectory, name);
-    if (realpathSync(path) !== resolve(path)) throw new Error("The backup must be a file in Dock’s backup folder.");
+    if (realpathSync(path) !== resolve(path)) throw new Error("The backup must be a file in Rivnote’s backup folder.");
     this.importJson(readFileSync(path, "utf8"));
   }
 

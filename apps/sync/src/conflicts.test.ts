@@ -20,7 +20,6 @@ test("sync preserves conflict links and their resolution while requiring an acce
         body: JSON.stringify({
           email: "conflict-test@dock.invalid",
           password: "test-only-conflict-password",
-          inviteCode: server.env.REGISTRATION_SECRET,
           deviceName: "Conflict test",
         }),
       })

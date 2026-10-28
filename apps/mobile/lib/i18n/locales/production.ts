@@ -1,11 +1,17 @@
 export const productionEn = {
+  River: "River",
+  createAccountTitle: "Create your Rivnote account",
+  welcomeBack: "Welcome back to Rivnote",
+  accountSyncHint: "Use the same account on mobile and desktop. Your saved tasks, notes and projects sync automatically when connected.",
+  accountDataHint: "Use at least 12 characters for your password. Attached files and device preferences stay on their original device. Save your recovery code privately; recovery uses this code, without email reset links.",
+  advancedServer: "Advanced: custom sync server",
   resolveConflicts: "Sync conflicts",
   conflictsCount: "Review conflicts ({{count}})",
   reviewConflict: "Compare versions",
   reviewConflictItem: "Review {{title}}",
   conflictsBack: "Back to conflicts",
   conflictsIntro:
-    "Review competing edits and choose which versions to keep. Decisions sync when Dock is connected.",
+    "Review competing edits and choose which versions to keep. Decisions sync when Rivnote is connected.",
   conflictHelp:
     "The same item changed before both devices synced. Open either version to review all details or edit it before choosing.",
   currentVersion: "Current version",
@@ -48,7 +54,7 @@ export const productionEn = {
   notificationSettings: "Notification settings",
   alarmSettings: "Android alarm settings",
   alarmSettingsBody:
-    "For precise reminders, open Android settings → Apps → Dock → Alarms & reminders and allow access. Without it, Android may delay reminders.",
+    "For precise reminders, open Android settings → Apps → Rivnote → Alarms & reminders and allow access. Without it, Android may delay reminders.",
   projectDelete:
     "Tasks in this project will move to Inbox. Child projects will become top-level projects.",
   updateSharedProject: "Update shared project",
@@ -109,7 +115,7 @@ export const productionEn = {
   attachments: "Attachments",
   addAttachment: "Attach a file",
   unavailableAttachment:
-    "This file is stored on another device. Attachment files are not transferred by Dock Sync.",
+    "This file is stored on another device. Attachment files are not transferred by Rivnote Sync.",
   delete: "Move to trash",
   restore: "Restore",
   purge: "Delete permanently",
@@ -147,7 +153,6 @@ export const productionEn = {
   server: "Sync server",
   email: "Email",
   password: "Password (12+ characters)",
-  invite: "Invite code",
   login: "Sign in",
   signup: "Create account",
   disconnect: "Sign out on this device",
@@ -228,13 +233,19 @@ export const productionEn = {
 };
 
 export const productionAr: typeof productionEn = {
+  River: "النهر",
+  createAccountTitle: "أنشئ حسابك في ريفنوت",
+  welcomeBack: "مرحبًا بعودتك إلى ريفنوت",
+  accountSyncHint: "استخدم الحساب نفسه على الهاتف وسطح المكتب. تتم مزامنة المهام والملاحظات والمشاريع تلقائيًا عند الاتصال.",
+  accountDataHint: "استخدم كلمة مرور من ١٢ حرفًا على الأقل. تبقى الملفات المرفقة وتفضيلات الجهاز على جهازها الأصلي. احتفظ برمز الاسترداد في مكان آمن؛ يُستخدم الرمز لاسترداد الحساب دون روابط بريد إلكتروني.",
+  advancedServer: "متقدم: خادم مزامنة مخصص",
   resolveConflicts: "تعارضات المزامنة",
   conflictsCount: "مراجعة التعارضات ({{count}})",
   reviewConflict: "مقارنة النسختين",
   reviewConflictItem: "مراجعة {{title}}",
   conflictsBack: "العودة للتعارضات",
   conflictsIntro:
-    "راجع التعديلات المتعارضة واختر النسخ التي تريد الاحتفاظ بها. تتزامن اختياراتك عند اتصال Dock.",
+    "راجع التعديلات المتعارضة واختر النسخ التي تريد الاحتفاظ بها. تتزامن اختياراتك عند اتصال Rivnote.",
   conflictHelp:
     "تم تعديل نفس العنصر قبل اكتمال المزامنة على الجهازين. افتح أي نسخة لمراجعة كل التفاصيل أو تعديلها قبل الاختيار.",
   currentVersion: "النسخة الحالية",
@@ -273,7 +284,7 @@ export const productionAr: typeof productionEn = {
   notificationSettings: "إعدادات الإشعارات",
   alarmSettings: "إعدادات منبّهات أندرويد",
   alarmSettingsBody:
-    "للتذكيرات الدقيقة، افتح إعدادات أندرويد ← التطبيقات ← Dock ← المنبّهات والتذكيرات واسمح بالوصول. قد يؤخّر أندرويد التذكيرات دون ذلك.",
+    "للتذكيرات الدقيقة، افتح إعدادات أندرويد ← التطبيقات ← Rivnote ← المنبّهات والتذكيرات واسمح بالوصول. قد يؤخّر أندرويد التذكيرات دون ذلك.",
   projectDelete:
     "ستنتقل مهام هذا المشروع إلى الوارد. ستصبح المشاريع الفرعية مشاريع مستقلة.",
   updateSharedProject: "تحديث المشروع المشترك",
@@ -334,7 +345,7 @@ export const productionAr: typeof productionEn = {
   attachments: "المرفقات",
   addAttachment: "إرفاق ملف",
   unavailableAttachment:
-    "هذا الملف محفوظ على جهاز آخر. لا تنقل مزامنة Dock ملفات المرفقات.",
+    "هذا الملف محفوظ على جهاز آخر. لا تنقل مزامنة Rivnote ملفات المرفقات.",
   delete: "نقل إلى المحذوفات",
   restore: "استعادة",
   purge: "حذف نهائي",
@@ -372,7 +383,6 @@ export const productionAr: typeof productionEn = {
   server: "خادم المزامنة",
   email: "البريد الإلكتروني",
   password: "كلمة المرور (12 حرفًا على الأقل)",
-  invite: "رمز الدعوة",
   login: "تسجيل الدخول",
   signup: "إنشاء حساب",
   disconnect: "تسجيل الخروج من هذا الجهاز",

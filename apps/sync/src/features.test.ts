@@ -18,7 +18,7 @@ async function fixture() {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const signup = async (email: string) => {
-    const response = await request("/auth/signup", { email, password: "long-test-password-2026", inviteCode: server.env.REGISTRATION_SECRET, deviceName: "Test Mac" });
+    const response = await request("/auth/signup", { email, password: "long-test-password-2026", deviceName: "Test Mac" });
     assert.equal(response.status, 200);
     return response.json() as Promise<{ accountId: string; email: string; token: string; expiresAt: string; recoveryCode: string }>;
   };
