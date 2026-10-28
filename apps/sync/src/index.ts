@@ -318,7 +318,7 @@ export default {
         if (previousProject && previousProject !== projectId && await env.DB.prepare("SELECT id FROM shared_projects WHERE id = ?").bind(previousProject).first())
           return json({ error: "Shared tasks must stay in their shared project." }, 400);
       }
-      for (const [reference, kind] of [[item.linkedNoteId, "note"], [item.recurrenceSourceId, "task"], [item.task.parentId, "task"]] as const) {
+      for (const [reference, kind] of [[item.linkedNoteId, "note"], [item.recurrenceSourceId, "task"], [item.task.parentId, "task"], [item.conflictOf, item.kind]] as const) {
         if (!reference) continue;
         const dependency = await env.DB.prepare("SELECT payload FROM records WHERE account_id = ? AND item_id = ? AND json_extract(payload, '$.kind') = ?")
           .bind(storageAccountId, reference, kind).first<{ payload: string }>();

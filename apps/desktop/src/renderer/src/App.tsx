@@ -56,6 +56,7 @@ import { ProjectEditor, Filters, Templates, CommandMenu } from "./WorkspaceTools
 import { ProjectBoard, Progress, RecentlyDeleted } from "./TaskViews";
 import { SharedProjectSettings } from "./SharedProjectSettings";
 import { UpdateNotice } from "./Updates";
+import { SyncConflicts } from "./SyncConflicts";
 import { useDock, type Act } from "./state";
 
 type View =
@@ -194,6 +195,8 @@ export function App() {
   const { snapshot, dispatch, act, error, clearError } = useDock();
   const [view, setView] = useState<View>("today");
   const [notesMounted, setNotesMounted] = useState(false);
+  const [conflictsOpen, setConflictsOpen] = useState(false);
+  const [openNoteId, setOpenNoteId] = useState<string | null>(null);
   const [taskLimit, setTaskLimit] = useState(100);
   useEffect(() => { if (view === "notes") setNotesMounted(true); }, [view]);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -842,6 +845,8 @@ export function App() {
                 dispatch={dispatch}
                 onTask={openEditor}
                 onDelete={(item) => void remove(item)}
+                openNoteId={openNoteId}
+                onNoteOpened={() => setOpenNoteId(null)}
               /></Suspense>}
             </div>
             {view === "schedule" ? (
@@ -853,7 +858,7 @@ export function App() {
             ) : view === 'trash' ? (
               <RecentlyDeleted snapshot={snapshot} dispatch={dispatch} />
             ) : view === "settings" ? (
-              <Settings snapshot={snapshot} dispatch={dispatch} act={act} />
+              <Settings snapshot={snapshot} dispatch={dispatch} act={act} onReviewConflicts={() => setConflictsOpen(true)} />
             ) : (
               view !== "notes" && (
                 <>
@@ -927,8 +932,8 @@ export function App() {
               <span className="status-dot" /> Saved on this{" "}
               {snapshot.system.platform === "darwin" ? "Mac" : "computer"} · Works
               offline
-              {snapshot.sync.connected && (
-                <Button variant="ghost" className="sync-status" onClick={() => navigate("settings")}>
+              {(snapshot.sync.connected || snapshot.sync.conflicts > 0) && (
+                <Button variant="ghost" className="sync-status" onClick={() => snapshot.sync.conflicts ? setConflictsOpen(true) : navigate("settings")}>
                   · {snapshot.sync.conflicts ? "Review conflicts" : snapshot.sync.phase === "synced" ? "Synced" :
                     snapshot.sync.phase === "syncing" ? "Syncing…" : snapshot.sync.phase === "offline" ? "Offline" :
                     snapshot.sync.phase === "error" ? "Sync needs attention" : "Sync pending"}
@@ -976,6 +981,17 @@ export function App() {
         ...navigation.map(item => ({ title: `Go to ${item.title}`, run: () => navigate(item.id) })),
         { title: 'Preferences', run: () => navigate('settings') }, { title: 'Recently deleted', run: () => navigate('trash') },
       ]} />}
+      {conflictsOpen && <SyncConflicts snapshot={snapshot} dispatch={dispatch}
+        onClose={() => { setConflictsOpen(false); clearError(); }}
+        beforeResolve={async () => {
+          if (editorDirty.current) throw new Error("Save or close your task changes before resolving a conflict.");
+          await window.dock.prepareUpdate(true);
+        }}
+        onOpenItem={item => {
+          setConflictsOpen(false);
+          if (item.kind === "task") openEditor(item);
+          else { setOpenNoteId(item.id); navigate("notes"); }
+        }} />}
       {role !== "main" && editor}
     </div>
   );

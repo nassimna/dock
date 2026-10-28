@@ -21,9 +21,10 @@ function initialDraft(note: Item): Draft {
     noteStyle: note.noteStyle, status: "saved", error: "", generation: 0 };
 }
 
-export const Notes = memo(function Notes({ snapshot, query, dispatch, onTask, onDelete }: {
+export const Notes = memo(function Notes({ snapshot, query, dispatch, onTask, onDelete, openNoteId, onNoteOpened }: {
   active: boolean; snapshot: Snapshot; query: string; dispatch: Dispatch;
   onTask: (item: Item) => void; onDelete: (item: Item) => void;
+  openNoteId: string | null; onNoteOpened: () => void;
 }) {
   const notes = snapshot.items.filter(item => item.kind === "note");
   const [selected, setSelected] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export const Notes = memo(function Notes({ snapshot, query, dispatch, onTask, on
   useEffect(() => window.dock.onBeforeUpdate(async () => {
     await Promise.all(notes.map(flush));
     if (notes.some(note => draftRef.current[note.id] && draftRef.current[note.id]!.status !== "saved"))
-      throw new Error("Save your notes or resolve their save errors before restarting Dock.");
+      throw new Error("Save your notes or resolve their save errors before continuing.");
   }, true), [snapshot.items]);
   useEffect(() => () => {
     for (const note of notesRef.current) void flush(note);
@@ -135,6 +136,9 @@ export const Notes = memo(function Notes({ snapshot, query, dispatch, onTask, on
     if (note && note.id !== id) void flush(note);
     setSelected(id); setFilter(""); setLibraryOpen(false); setTaskError("");
   }
+  useEffect(() => {
+    if (openNoteId) { choose(openNoteId); onNoteOpened(); }
+  }, [openNoteId]);
   useEffect(() => {
     const handleSave = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s" &&

@@ -21,8 +21,11 @@ const child = spawn(
     "apps/desktop/src/main/note-properties.test.ts",
     "apps/desktop/src/main/reminders.test.ts",
     "apps/desktop/src/main/local-api.test.ts",
+    "packages/core/tests/database.test.ts",
+    "packages/core/tests/conflicts.test.ts",
     "apps/sync/src/sync.test.ts",
     "apps/sync/src/features.test.ts",
+    "apps/sync/src/conflicts.test.ts",
   ],
   { stdio: "inherit", env: { ...process.env, DOCK_TEST_ROOT: directory } },
 );

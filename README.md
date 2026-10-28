@@ -1,6 +1,6 @@
 # Dock
 
-A desktop app for quickly capturing tasks and notes. The app stores everything locally in SQLite. An optional Cloudflare sync backend is included; a mobile client comes later.
+A desktop app for quickly capturing tasks and notes. The desktop stores everything locally in SQLite. An optional Cloudflare sync backend and an Android mobile client are included.
 
 The desktop application runs locally with a real SQLite database, native quick capture, a tray, and a pinned mini window. No cloud account is needed.
 
@@ -52,11 +52,16 @@ apps/
     src/main/       SQLite, reminders, windows, tray, and local command API
     src/preload/    Sandboxed, typed Electron bridge
     src/renderer/   React UI and application styles
+  mobile/           Expo / React Native app; SQLite, secure sessions and desktop sync
   sync/             Cloudflare Worker, D1 migrations, and sync setup
   cli/              Local commands for people and agents
 packages/
   contracts/        Runtime schemas and shared types
+  core/             Shared SQLite, sync, task and import logic
 ```
+
+For the mobile app, run `pnpm dev:mobile` with a native development build. See
+[mobile setup, sync and signed APK builds](apps/mobile/README.md).
 
 This follows inspected patterns from [Ternline](https://github.com/nassimna/ternline) (pnpm workspaces, electron-vite, separate main/preload/renderer, validated bridge) and [T3 Code](https://github.com/pingdotgg/t3code) (shared contracts and a single SQLite owner). The implementation is specific to Dock; it does not copy their application code or introduce their terminal and agent frameworks.
 

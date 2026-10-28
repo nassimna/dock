@@ -9,3 +9,15 @@ test-results/
 apps/sync/.wrangler/
 apps/sync/.dev.vars*
 apps/sync/.env*
+apps/mobile/.expo/
+apps/mobile/dist/
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/expo-env.d.ts
+apps/mobile/.env*
+apps/mobile/*.jks
+apps/mobile/*.keystore
+apps/mobile/signing.properties
+apps/mobile/credentials.json
+
+apps/mobile/.generated/

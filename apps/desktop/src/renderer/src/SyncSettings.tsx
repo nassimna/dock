@@ -7,7 +7,7 @@ import type { SyncFeatures } from "../../../../../packages/contracts/src/sync-fe
 import type { Command, SyncStatus } from "@dock/contracts";
 import { errorMessage, type Dispatch } from "./state";
 
-export function SyncSettings({ sync, features, dispatch }: { sync: SyncStatus; features: SyncFeatures; dispatch: Dispatch }) {
+export function SyncSettings({ sync, features, dispatch, onReviewConflicts }: { sync: SyncStatus; features: SyncFeatures; dispatch: Dispatch; onReviewConflicts: () => void }) {
   const [endpoint, setEndpoint] = useState(sync.endpoint);
   const [email, setEmail] = useState(sync.email);
   const [password, setPassword] = useState("");
@@ -114,7 +114,10 @@ export function SyncSettings({ sync, features, dispatch }: { sync: SyncStatus; f
         <Input aria-label="Your recovery code" readOnly value={features.recoveryCode} onFocus={event => event.target.select()} />
       </div>}
       {(error || sync.error || features.error) && <p className="note-error" role="alert">{error || sync.error || features.error}</p>}
-      {sync.conflicts > 0 && <p className="sync-conflicts" role="status">Conflicting edits were kept as {sync.conflicts} separate {sync.conflicts === 1 ? "copy" : "copies"}. Review “conflict copy” items in Notes or All tasks; delete them when resolved.</p>}
+      <div className="sync-conflicts">
+        {sync.conflicts > 0 && <p role="status">{sync.conflicts} conflicting {sync.conflicts === 1 ? "edit needs" : "edits need"} review. Both versions have been kept.</p>}
+        <Button variant="outline" type="button" onClick={onReviewConflicts}>{sync.conflicts ? "Review conflicts" : "Sync conflicts"}</Button>
+      </div>
     </section>
   );
 }

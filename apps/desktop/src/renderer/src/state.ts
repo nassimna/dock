@@ -2,12 +2,17 @@ import { useCallback, useEffect, useState } from "react";
 import type { Command, Snapshot } from "@dock/contracts";
 
 export function errorMessage(cause: unknown): string {
-  return cause instanceof Error
+  const message = cause instanceof Error
     ? cause.message.replace(
         /^Error invoking remote method '[^']+': Error: /,
         "",
       )
     : "The command failed.";
+  return ({
+    conflictChanged: "A version changed or this conflict was already resolved. Review the updated versions before choosing again.",
+    conflictOriginalMissing: "The original is unavailable. Keep this copy as a separate item; no original will be changed.",
+    conflictLinkedWork: "This copy has linked tasks or notes. Keep both, or move the linked work before choosing one version.",
+  } as Record<string, string>)[message] ?? message;
 }
 
 export function useDock() {

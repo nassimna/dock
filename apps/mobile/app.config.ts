@@ -1,0 +1,47 @@
+import type { ExpoConfig } from "expo/config";
+
+const variants = {
+  development: { name: "Dock (dev)", applicationId: "net.devexa.dock.dev" },
+  production: { name: "Dock", applicationId: "net.devexa.dock" },
+} as const;
+const variant = process.env.APP_VARIANT ?? "development";
+if (!Object.hasOwn(variants, variant)) {
+  throw new Error(
+    `Invalid APP_VARIANT "${variant}". Use development or production.`,
+  );
+}
+const selected = variants[variant as keyof typeof variants];
+
+const config: ExpoConfig = {
+  name: selected.name,
+  slug: "dock-mobile",
+  version: "0.1.2",
+  scheme: "dockmobile",
+  orientation: "portrait",
+  userInterfaceStyle: "automatic",
+  newArchEnabled: true,
+  icon: "./assets/icon.png",
+  ios: { supportsTablet: true, bundleIdentifier: selected.applicationId },
+  android: {
+    package: selected.applicationId,
+    versionCode: 3,
+    edgeToEdgeEnabled: true,
+    blockedPermissions: [
+      "android.permission.RECORD_AUDIO",
+      "android.permission.READ_EXTERNAL_STORAGE",
+      "android.permission.WRITE_EXTERNAL_STORAGE",
+      "android.permission.SYSTEM_ALERT_WINDOW",
+    ],
+    permissions: ["android.permission.SCHEDULE_EXACT_ALARM"],
+  },
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    "expo-notifications",
+    ["./plugins/with-release-signing", { enabled: variant === "production" }],
+    ...(variant === "development" ? ["expo-dev-client"] : []),
+  ],
+  experiments: { typedRoutes: true },
+};
+
+export default config;

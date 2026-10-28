@@ -9,6 +9,9 @@
   },
   "scripts": {
     "dev": "node scripts/run-desktop.mjs dev",
+    "dev:mobile": "pnpm --filter @dock/mobile dev",
+    "typecheck:mobile": "pnpm --filter @dock/mobile typecheck",
+    "test:mobile": "pnpm --filter @dock/mobile test",
     "start": "node scripts/run-desktop.mjs start",
     "build": "pnpm --filter @dock/desktop build",
     "typecheck": "tsc --noEmit",

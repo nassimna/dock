@@ -59,7 +59,7 @@ test("v4 migration indexes task parents and preserves data across reopening", ()
     }
     const raw = new DatabaseSync(filename);
     try {
-      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 5);
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 6);
       assert.ok(raw.prepare("EXPLAIN QUERY PLAN SELECT id FROM items WHERE json_extract(task_properties, '$.parentId') = ?").all(id)
         .some(row => String(row.detail).includes("items_parent")));
     } finally { raw.close(); }

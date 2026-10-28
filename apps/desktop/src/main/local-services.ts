@@ -1,7 +1,8 @@
+import { todoistBackup } from "@dock/core/import";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
-import { itemInputSchema, itemSchema, localDate, type Item, type LocalServicesState } from "@dock/contracts";
+import { itemInputSchema, localDate, type LocalServicesState } from "@dock/contracts";
 import type { DockDatabase } from "./database.ts";
 import { ReminderJournal } from "./reminders.ts";
 
@@ -75,43 +76,7 @@ export class LocalServices {
   }
 
   importTodoist(content: string, name: string): void {
-    const workspace = this.database.snapshot().workspace;
-    const projectId = randomUUID();
-    const sections: { id: string; name: string }[] = [];
-    const items: Item[] = [];
-    const parents: string[] = [];
-    let sectionId: string | null = null;
-    const now = new Date().toISOString();
-    for (const row of todoistRows(content)) {
-      const type = (row.TYPE ?? "task").toLowerCase();
-      if (type === "section") {
-        const section = { id: randomUUID(), name: row.CONTENT?.trim() || "Section" };
-        sections.push(section);
-        sectionId = section.id;
-        parents.length = 0;
-        continue;
-      }
-      if (type !== "task" || !row.CONTENT?.trim()) continue;
-      const indent = Math.max(1, Number(row.INDENT || 1));
-      if (!Number.isInteger(indent) || indent > parents.length + 1) throw new Error("The CSV contains an invalid subtask indentation.");
-      const scheduledAt = importDate(row.DATE ?? "");
-      const deadline = importDate(row.DEADLINE ?? "");
-      const duration = Number(row.DURATION || 30) * (row.DURATION_UNIT === "hour" ? 60 : 1);
-      const id = randomUUID();
-      items.push(itemSchema.parse({
-        id, kind: "task", title: row.CONTENT, body: row.DESCRIPTION ?? "", space: "Inbox",
-        priority: Number(row.PRIORITY || 1) > 1, done: false, scheduledAt, recurrence: "none", linkedNoteId: null,
-        task: { priority: 5 - Number(row.PRIORITY || 1), projectId, sectionId, parentId: indent > 1 ? parents[indent - 2] : null, deadline, durationMinutes: duration },
-        createdAt: now, updatedAt: now, revision: 1,
-      }));
-      parents[indent - 1] = id;
-      parents.length = indent;
-    }
-    if (!items.length) throw new Error("No tasks were found. Choose a Todoist project CSV export.");
-    const count = this.database.restoreBackup({
-      items,
-      workspace: { ...workspace, projects: [...workspace.projects, { id: projectId, name: name.slice(0, 80) || "Todoist import", parentId: null, color: "#9c80e8", favorite: false, sections }] },
-    });
+    const count = this.database.restoreBackup(todoistBackup(content, name, this.database.snapshot().workspace, randomUUID));
     this.message = `Imported ${count} task${count === 1 ? "" : "s"} into ${name}.`;
   }
 
@@ -155,32 +120,4 @@ export class LocalServices {
   }
 }
 
-export function todoistRows(content: string): Record<string, string>[] {
-  const rows: string[][] = [];
-  let row: string[] = [], value = "", quoted = false;
-  for (let index = 0; index < content.length; index++) {
-    const character = content[index]!;
-    if (character === '"') {
-      if (quoted && content[index + 1] === '"') { value += '"'; index++; }
-      else quoted = !quoted;
-    } else if (character === "," && !quoted) { row.push(value); value = ""; }
-    else if ((character === "\n" || character === "\r") && !quoted) {
-      if (character === "\r" && content[index + 1] === "\n") index++;
-      row.push(value); rows.push(row); row = []; value = "";
-    } else value += character;
-  }
-  if (quoted) throw new Error("The CSV contains an unclosed quoted field.");
-  if (value || row.length) { row.push(value); rows.push(row); }
-  const headers = rows.shift()?.map(value => value.replace(/^\uFEFF/, "").trim().toUpperCase());
-  if (!headers?.includes("CONTENT")) throw new Error("Choose a Todoist CSV export with a CONTENT column.");
-  return rows.filter(row => row.some(Boolean)).map(row => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
-}
-
-function importDate(value: string): string | null {
-  if (!value.trim()) return null;
-  if (!/^\d{4}-\d{2}-\d{2}(?:[ T].*)?$/.test(value.trim()))
-    throw new Error(`The CSV date “${value}” is unsupported. Export dates as YYYY-MM-DD or ISO timestamps.`);
-  const date = new Date(value.trim().length === 10 ? `${value.trim()}T23:59:00` : value.trim());
-  if (!Number.isFinite(date.getTime()) || (value.trim().length === 10 && localDate(date) !== value.trim())) throw new Error(`The CSV date “${value}” is invalid.`);
-  return date.toISOString();
-}
+export { todoistRows } from "@dock/core/csv";

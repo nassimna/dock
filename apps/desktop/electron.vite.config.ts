@@ -5,7 +5,11 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({ exclude: ["@dock/contracts", "zod"] })],
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ["@dock/contracts", "@dock/core", "zod"],
+      }),
+    ],
     build: {
       rollupOptions: { output: { format: "cjs", entryFileNames: "index.cjs" } },
     },
@@ -18,7 +22,9 @@ export default defineConfig({
   },
   renderer: {
     resolve: {
-      alias: { "@": fileURLToPath(new URL("./src/renderer/src", import.meta.url)) },
+      alias: {
+        "@": fileURLToPath(new URL("./src/renderer/src", import.meta.url)),
+      },
     },
     plugins: [
       react(),

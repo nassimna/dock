@@ -2,11 +2,23 @@
   "name": "dock-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-08",
-  "ratelimits": [{ "name": "AUTH_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } }],
-  "d1_databases": [{
-    "binding": "DB",
-    "database_name": "dock-sync",
-    "database_id": "REPLACE_WITH_D1_DATABASE_ID",
-    "migrations_dir": "migrations"
-  }]
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMITER",
+      "namespace_id": "20261027",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dock-sync",
+      "database_id": "b507c62f-7426-4fb7-851f-98ece0d08ffd",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "account_id": "b3d8527506a267244ffc2ed8c30da9b8"
 }

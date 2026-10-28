@@ -19,10 +19,12 @@ export function Settings({
   snapshot,
   dispatch,
   act,
+  onReviewConflicts,
 }: {
   snapshot: Snapshot;
   dispatch: Dispatch;
   act: Act;
+  onReviewConflicts: () => void;
 }) {
   const [draft, setDraft] = useState<Preferences>(snapshot.settings);
   const [recording, setRecording] = useState(false);
@@ -275,7 +277,7 @@ export function Settings({
           <UpdateDetails update={snapshot.update} version={snapshot.system.version} act={act} />
         </section>
       </form>
-      <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch} />
+      <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch} onReviewConflicts={onReviewConflicts} />
       <DataSettings snapshot={snapshot} dispatch={dispatch} />
       <section>
         <h2>

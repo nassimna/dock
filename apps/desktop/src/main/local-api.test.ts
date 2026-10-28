@@ -20,7 +20,7 @@ test("local commands require the profile token and reject browser origins and ma
   const directory = mkdtempSync(join(parent, "local-api-"));
   let calls = 0;
   const snapshot: Snapshot = {
-    undo: null,
+    undo: null, syncConflicts: [],
     items: [],
     workspace: { projects: [], filters: [], labels: [], templates: [], goals: { daily: 5, weekly: 25, vacation: false, vacationPeriods: [] } },
     deletedItems: [],

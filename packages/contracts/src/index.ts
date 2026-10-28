@@ -260,11 +260,12 @@ export type SyncCredentials = z.infer<typeof syncCredentialsSchema>;
 const syncItemObjectSchema = itemSchema.omit({ revision: true }).extend({
   deletedAt: z.iso.datetime().nullable(),
   recurrenceSourceId: z.uuid().nullable(),
+  conflictOf: z.uuid().nullable().optional(),
 }).superRefine((item, context) => {
   const result = itemInputSchema.safeParse({ ...item, id: undefined });
   if (!result.success)
     for (const issue of result.error.issues) context.addIssue({ ...issue, code: "custom" });
-  if (item.id === item.linkedNoteId || item.id === item.recurrenceSourceId || item.id === item.task.parentId)
+  if (item.id === item.linkedNoteId || item.id === item.recurrenceSourceId || item.id === item.task.parentId || item.id === item.conflictOf)
     context.addIssue({ code: "custom", message: "An item cannot link to itself." });
 });
 export const syncItemSchema = z.preprocess(value => {
@@ -323,6 +324,12 @@ export const undoStateSchema = z.object({
 }).nullable().default(null);
 export type UndoState = z.infer<typeof undoStateSchema>;
 
+export const conflictMergeSchema = z.object({
+  title: z.string().trim().min(1).max(500),
+  body: z.string().max(200_000),
+  metadata: z.enum(["current", "saved"]),
+});
+
 export const commandSchema = z.discriminatedUnion("type", [
   ...localServiceCommands,
   ...syncFeatureCommandSchemas,
@@ -333,6 +340,17 @@ export const commandSchema = z.discriminatedUnion("type", [
   syncSignupSchema.extend({ type: z.literal("sync.signup"), endpoint: syncEndpointSchema }),
   z.object({ type: z.literal("sync.now") }),
   z.object({ type: z.literal("sync.disconnect") }),
+  z.object({
+    type: z.literal("sync.resolve"),
+    copyId: z.uuid(),
+    choice: z.enum(["original", "copy", "both", "merge"]),
+    merged: conflictMergeSchema.optional(),
+    expectedRevision: z.number().int().positive(),
+    expectedOriginalRevision: z.number().int().positive().nullable(),
+  }).superRefine((command, context) => {
+    if (command.choice === "merge" && !command.merged)
+      context.addIssue({ code: "custom", path: ["merged"], message: "Add a merged result before resolving." });
+  }),
   z.object({ type: z.literal("item.save"), item: itemInputSchema }),
   z.object({ type: z.literal("item.reorder"), projectId: z.uuid(), sectionId: z.uuid().nullable(),
     ids: z.array(z.uuid()).min(1).max(10000).refine(ids => new Set(ids).size === ids.length, "Each task may appear only once."),
@@ -379,6 +397,12 @@ export const commandSchema = z.discriminatedUnion("type", [
   }),
 ]);
 
+export const syncConflictSchema = z.object({
+  copy: itemSchema,
+  original: itemSchema.nullable(),
+  originalDeleted: z.boolean(),
+});
+
 export const snapshotSchema = z.object({
   undo: undoStateSchema,
   items: z.array(itemSchema),
@@ -388,6 +412,7 @@ export const snapshotSchema = z.object({
   localServices: localServicesSchema,
   syncFeatures: syncFeaturesSchema,
   sync: syncStatusSchema,
+  syncConflicts: z.array(syncConflictSchema).default([]),
   update: updateStateSchema,
   system: z.object({
     name: z.string().default("Dock"),

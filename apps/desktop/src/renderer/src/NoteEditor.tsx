@@ -32,11 +32,12 @@ function ChecklistItem({ node, updateAttributes, editor }: ReactNodeViewProps) {
 }
 const ThemedTaskItem = TaskItem.extend({ addNodeView() { return ReactNodeViewRenderer(ChecklistItem); } });
 
-export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
+export function NoteEditor({ value, onChange, notes, onOpenNote, children, readOnly = false, label = "Note body" }: {
   value: string; onChange: (value: string) => void; notes: Item[];
   onOpenNote: (id: string) => void; children: ReactNode;
+  readOnly?: boolean; label?: string;
 }) {
-  const [mode, setMode] = useState<"write" | "source" | "read">("write");
+  const [mode, setMode] = useState<"write" | "source" | "read">(readOnly ? "read" : "write");
   const sourceMode = useRef(false);
   const [sourceText, setSourceText] = useState(value);
   const [commandOpen, setCommandOpen] = useState(false);
@@ -70,10 +71,11 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
       NoteBlockColors, Callout, NoteDetails, NoteDetailsContent, NoteDetailsSummary,
       Table.configure({ resizable: false, renderWrapper: true, cellMinWidth: 80 }), TableCell, TableHeader, TableRow, TableOfContents,
     ],
-    content: value, contentType: "markdown", shouldRerenderOnTransaction: false, injectCSS: false,
+    content: value, contentType: "markdown", editable: !readOnly, shouldRerenderOnTransaction: false, injectCSS: false,
     editorProps: {
-      attributes: { role: "textbox", "aria-label": "Note body", "aria-multiline": "true", spellcheck: "true" },
+      attributes: { role: "textbox", "aria-label": label, "aria-readonly": String(readOnly), "aria-multiline": "true", spellcheck: "true" },
       handleKeyDown(view, event) {
+        if (readOnly) return false;
         const { $from } = view.state.selection;
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
           event.preventDefault(); setUrl($from.marks().find(mark => mark.type.name === "link")?.attrs.href ?? "");
@@ -101,6 +103,7 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
         return false;
       },
       handleDOMEvents: { click(_view, event) {
+        if (readOnly && (event.target as HTMLElement).closest("a[href]")) { event.preventDefault(); return true; }
         const anchor = (event.target as HTMLElement).closest('a[href^="dock-note://"]');
         if (anchor) { event.preventDefault(); onOpenNote(anchor.getAttribute("href")!.slice(12)); return true; }
         const external = (event.target as HTMLElement).closest("a[href]");
@@ -158,11 +161,11 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
   }, [editor, value]);
   useEffect(() => {
     if (!editor) return;
-    editor.setEditable(mode === "write", false);
+    editor.setEditable(mode === "write" && !readOnly, false);
     editor.commands.setMeta("noteMode", mode);
     sourceMode.current = mode === "source";
     setCommandOpen(false); setLinkOpen(false); setFormatOpen(false); setBlockMenuOpen(false);
-  }, [editor, mode]);
+  }, [editor, mode, readOnly]);
   useEffect(() => {
     if (!editor || !state || !container.current) return;
     const position = () => {
@@ -335,13 +338,13 @@ export function NoteEditor({ value, onChange, notes, onOpenNote, children }: {
     </PopoverContent>
   </Popover>;
   return <div className="rich-note" ref={container}>
-    <div className="editor-toolbar">
+    {!readOnly && <div className="editor-toolbar">
       <div className="note-mode-switch" aria-label="Note editing mode">{([['write', 'Write'], ['source', 'Markdown'], ['read', 'Read']] as const).map(([value, label]) => <Button key={value} variant="ghost" size="xs" aria-pressed={mode === value} onClick={() => { if (value === "source") setSourceText(noteMarkup(editor)); setMode(value); }}>{label}</Button>)}</div>
       <div className="editor-mode-actions">{mode === "write" && <>{commandMenu}{formatting}</>}
         {mode !== "read" && <><Button variant="ghost" size="icon-xs" aria-label="Undo note edit" disabled={!state.undo} onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().undo().run()}><Undo2 size="0.875rem" /></Button><Button variant="ghost" size="icon-xs" aria-label="Redo note edit" disabled={!state.redo} onMouseDown={event => event.preventDefault()} onClick={() => editor.chain().redo().run()}><Redo2 size="0.875rem" /></Button></>}
         <Popover><PopoverTrigger asChild><Button variant="ghost" size="icon-xs" aria-label="Note outline"><ListTree size="0.9375rem" /></Button></PopoverTrigger><PopoverContent align="end" className="note-outline">{state.headings.length ? state.headings.map(heading => <Button key={heading.pos} variant="ghost" size="xs" onClick={() => jumpToHeading(editor, heading.pos)} style={{ paddingLeft: `${(heading.level - 1) * 0.75}rem` }}>{heading.title}</Button>) : <p className="muted">Add headings to see an outline.</p>}</PopoverContent></Popover>
       </div>
-    </div>
+    </div>}
     {mode === "write" && <BubbleMenu editor={editor} options={bubbleOptions} className="note-selection-toolbar" shouldShow={showSelection}>
       {marks.map(action => <Button key={action.label} variant="ghost" size="icon-xs" aria-label={action.label} aria-pressed={action.active} onMouseDown={event => event.preventDefault()} onClick={action.run}><action.icon size="0.9375rem" /></Button>)}
       <Button variant="ghost" size="icon-xs" aria-label="Add or edit link" onMouseDown={event => event.preventDefault()} onClick={beginLink}><Link2 size="0.9375rem" /></Button>

@@ -69,6 +69,7 @@ function snapshot(store: StoreSnapshot = database.snapshot()): Snapshot {
   return {
     ...store,
     sync: sync.status(),
+    syncConflicts: database.syncConflicts(),
     syncFeatures: sync.statusFeatures(),
     update: updates.state(),
     localServices: localServices.state(),
@@ -509,7 +510,7 @@ async function dispatch(
       updates.configure(command.settings.automaticUpdates);
   } else {
     store = database.execute(command);
-    if (command.type.startsWith("item.")) sync.localChanged(false);
+    if (command.type.startsWith("item.") || command.type === "sync.resolve") sync.localChanged(false);
   }
   const state = snapshot(store);
   if (command.type !== "snapshot") broadcast(state);
