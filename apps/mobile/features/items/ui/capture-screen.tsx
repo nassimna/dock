@@ -1,3 +1,4 @@
+import { Icon } from "@/components/ui/icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -21,7 +22,7 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { storage } from "@/lib/storage";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import {
   KeyboardAvoidingView,
@@ -118,6 +119,7 @@ function CaptureForm({
   );
   const [comment, setComment] = useState("");
   const [richOpen, setRichOpen] = useState(false);
+  const [propertiesOpen, setPropertiesOpen] = useState(false);
   const isNote = kind === "note";
   const patch = (value: Partial<TaskProperties>) =>
     setTask((current) => ({ ...current, ...value }));
@@ -214,29 +216,40 @@ function CaptureForm({
           <Button
             variant="ghost"
             label={t("common.cancel")}
+            icon={isNote ? undefined : "close-outline"}
+            iconOnly={!isNote}
             onPress={() => router.back()}
             disabled={save.isPending}
           />
-          <Text variant="heading">
-            {t(
-              item
-                ? isNote
-                  ? "capture.editNote"
-                  : "capture.editTask"
-                : isNote
-                  ? "capture.newNote"
-                  : "capture.newTask",
-            )}
+          <Text
+            variant={isNote ? "heading" : "muted"}
+            className={!isNote ? "flex-1 text-center text-sm" : undefined}
+          >
+            {isNote
+              ? t(item ? "capture.editNote" : "capture.newNote")
+              : (snapshot.workspace.projects.find(
+                  (value) => value.id === task.projectId,
+                )?.name ?? t("items.inbox"))}
           </Text>
           <View className="w-10" />
         </View>
         <KeyboardAwareScrollView
           bottomOffset={24}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ padding: 20, gap: 20 }}
+          contentContainerStyle={{
+            padding: isNote ? 20 : 16,
+            gap: isNote ? 20 : 12,
+          }}
         >
+          {!isNote && (
+            <Icon
+              name="document-text-outline"
+              size={30}
+              className="text-foreground"
+            />
+          )}
           <View className="gap-2">
-            <Text variant="label">{t("capture.title")}</Text>
+            {isNote && <Text variant="label">{t("capture.title")}</Text>}
             <Input
               autoFocus={!item}
               accessibilityLabel={t("capture.title")}
@@ -248,44 +261,35 @@ function CaptureForm({
               )}
               maxLength={500}
               multiline
-              className="text-xl"
+              className={
+                isNote
+                  ? "text-xl"
+                  : "border-0 bg-transparent px-0 py-0 text-3xl font-semibold leading-10"
+              }
             />
           </View>
-          <View className="gap-2">
-            <Text variant="label">
-              {t(isNote ? "capture.noteBody" : "capture.details")}
-            </Text>
-            {isNote ? (
-              <>
-                <Text variant="muted" numberOfLines={5}>
-                  {body.replace(/<[^>]*>/g, " ").slice(0, 500) ||
-                    t("capture.noteBodyPlaceholder")}
-                </Text>
-                <Button
-                  variant="outline"
-                  label={t("production.richEditor")}
-                  onPress={() => setRichOpen(true)}
-                />
-              </>
-            ) : (
-              <Input
-                accessibilityLabel={t("capture.details")}
-                value={body}
-                onChangeText={setBody}
-                placeholder={t("capture.detailsPlaceholder")}
-                multiline
-                textAlignVertical="top"
-                maxLength={200000}
-                className="min-h-32 leading-7"
+          {isNote && (
+            <View className="gap-2">
+              <Text variant="label">{t("capture.noteBody")}</Text>
+              <Text variant="muted" numberOfLines={5}>
+                {body.replace(/<[^>]*>/g, " ").slice(0, 500) ||
+                  t("capture.noteBodyPlaceholder")}
+              </Text>
+              <Button
+                variant="outline"
+                label={t("production.richEditor")}
+                onPress={() => setRichOpen(true)}
               />
-            )}
-          </View>
-          <Input
-            accessibilityLabel={t("production.tags")}
-            placeholder={t("production.tags")}
-            value={tags}
-            onChangeText={setTags}
-          />
+            </View>
+          )}
+          {isNote && (
+            <Input
+              accessibilityLabel={t("production.tags")}
+              placeholder={t("production.tags")}
+              value={tags}
+              onChangeText={setTags}
+            />
+          )}
           {isNote ? (
             <>
               <Select
@@ -338,228 +342,408 @@ function CaptureForm({
             </>
           ) : (
             <>
-              <DateTimeField
-                label={t("capture.schedule")}
-                value={scheduledAt}
-                onChange={setScheduledAt}
-              />
-              {item && !item.done && (
-                <Button
-                  variant="outline"
-                  label={t("production.snooze")}
-                  onPress={() =>
-                    command.mutate(
-                      { type: "item.snooze", id: item.id, minutes: 10 },
-                      { onSuccess: () => router.back() },
-                    )
-                  }
-                />
-              )}
-              <DateTimeField
-                label={t("production.deadline")}
-                value={task.deadline}
-                onChange={(value) => patch({ deadline: value })}
-              />
-              <Select
-                label={t("production.priority")}
-                value={String(task.priority)}
-                options={[1, 2, 3, 4].map((value) => ({
-                  value: String(value),
-                  label: `P${value}`,
-                }))}
-                onChange={(value) =>
-                  patch({ priority: Number(value) as 1 | 2 | 3 | 4 })
-                }
-              />
-              <Select
-                label={t("production.project")}
-                value={task.projectId ?? ""}
-                options={[
-                  { value: "", label: t("items.noProject") },
-                  ...snapshot.workspace.projects.map((value) => ({
-                    value: value.id,
-                    label: value.name,
-                  })),
-                ]}
-                onChange={(value) =>
-                  patch({
-                    projectId: value || null,
-                    sectionId: null,
-                    parentId: null,
-                  })
-                }
-              />
-              <Select
-                label={t("production.section")}
-                value={task.sectionId ?? ""}
-                options={[
-                  { value: "", label: t("production.noSection") },
-                  ...(
-                    snapshot.workspace.projects.find(
-                      (value) => value.id === task.projectId,
-                    )?.sections ?? []
-                  ).map((value) => ({ value: value.id, label: value.name })),
-                ]}
-                onChange={(value) => patch({ sectionId: value || null })}
-              />
-              <Select
-                label={t("production.parent")}
-                value={task.parentId ?? ""}
-                options={[
-                  { value: "", label: t("production.none") },
-                  ...snapshot.items
-                    .filter(
-                      (value) =>
-                        value.kind === "task" &&
-                        value.id !== item?.id &&
-                        value.task.projectId === task.projectId,
-                    )
-                    .map((value) => ({ value: value.id, label: value.title })),
-                ]}
-                onChange={(value) => patch({ parentId: value || null })}
-              />
-              <Input
-                accessibilityLabel={t("production.duration")}
-                placeholder={t("production.duration")}
-                value={String(task.durationMinutes)}
-                onChangeText={(value) =>
-                  patch({ durationMinutes: Number(value) })
-                }
-                keyboardType="number-pad"
-              />
-              <Select
-                label={t("production.repeat")}
-                value={recurrence}
-                options={[
-                  "none",
-                  "daily",
-                  "weekly",
-                  "monthly",
-                  "weekdays",
-                  "custom",
-                ].map((value) => ({ value, label: t(`recurrence.${value}`) }))}
-                onChange={(value) => setRecurrence(value as Item["recurrence"])}
-              />
-              {recurrence === "custom" && (
-                <>
-                  <Input
-                    accessibilityLabel={t("production.interval")}
-                    placeholder={t("production.interval")}
-                    value={String(task.repeat.interval)}
-                    onChangeText={(value) =>
-                      patch({
-                        repeat: { ...task.repeat, interval: Number(value) },
-                      })
-                    }
-                    keyboardType="number-pad"
-                  />
-                  <Select
-                    label={t("production.repeat")}
-                    value={task.repeat.unit}
-                    options={["day", "week", "month"].map((value) => ({
-                      value,
-                      label: t(`recurrence.${value}`),
-                    }))}
-                    onChange={(value) =>
-                      patch({
-                        repeat: {
-                          ...task.repeat,
-                          unit: value as "day" | "week" | "month",
-                        },
-                      })
-                    }
-                  />
-                  <Button
-                    variant="outline"
-                    label={`${t("production.afterCompletion")}: ${t(task.repeat.afterCompletion ? "production.on" : "production.off")}`}
-                    onPress={() =>
-                      patch({
-                        repeat: {
-                          ...task.repeat,
-                          afterCompletion: !task.repeat.afterCompletion,
-                        },
-                      })
-                    }
-                  />
-                </>
-              )}
-              <Select
-                label={t("production.linkedNote")}
-                value={linkedNoteId}
-                options={[
-                  { value: "", label: t("production.none") },
-                  ...notes.map((value) => ({
-                    value: value.id,
-                    label: value.title,
-                  })),
-                ]}
-                onChange={setLinkedNoteId}
-              />
-              <Input
-                accessibilityLabel={t("production.assignee")}
-                placeholder={t("production.assignee")}
-                value={task.assignee}
-                onChangeText={(value) => patch({ assignee: value })}
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-              <View className="gap-3">
-                <Text variant="heading">{t("production.reminders")}</Text>
-                {task.reminders.map((value, index) => (
-                  <DateTimeField
-                    key={index}
-                    label={t("production.notifyAt")}
-                    value={value}
-                    onChange={(next) =>
-                      patch({
-                        reminders: next
-                          ? task.reminders.map((old, at) =>
-                              at === index ? next : old,
-                            )
-                          : task.reminders.filter((_, at) => at !== index),
-                      })
-                    }
-                  />
-                ))}
-                <Button
-                  variant="outline"
-                  label={t("production.addReminder")}
-                  loading={nativeAction.isPending}
-                  onPress={() =>
-                    nativeAction.mutate(async () => {
-                      await enableReminders();
-                      patch({
-                        reminders: [
-                          ...task.reminders,
-                          dayjs().add(1, "hour").second(0).toISOString(),
-                        ],
-                      });
+              <View>
+                <Select
+                  presentation="property"
+                  icon="folder-outline"
+                  label={t("production.project")}
+                  value={task.projectId ?? ""}
+                  options={[
+                    { value: "", label: t("items.noProject") },
+                    ...snapshot.workspace.projects.map((value) => ({
+                      value: value.id,
+                      label: value.name,
+                    })),
+                  ]}
+                  onChange={(value) =>
+                    patch({
+                      projectId: value || null,
+                      sectionId: null,
+                      parentId: null,
                     })
                   }
-                  disabled={task.reminders.length >= 20}
                 />
-                {nativeAction.error?.message === "notificationDenied" && (
-                  <>
-                    <Text
-                      accessibilityRole="alert"
-                      className="text-destructive"
-                    >
-                      {t("production.notificationDenied")}
-                    </Text>
-                    <Button
-                      variant="outline"
-                      label={t("production.notificationSettings")}
-                      onPress={() => router.push("/data")}
+                <Select
+                  presentation="property"
+                  icon="flag-outline"
+                  label={t("production.priority")}
+                  value={String(task.priority)}
+                  options={[1, 2, 3, 4].map((value) => ({
+                    value: String(value),
+                    label: `P${value}`,
+                  }))}
+                  onChange={(value) =>
+                    patch({ priority: Number(value) as 1 | 2 | 3 | 4 })
+                  }
+                />
+                <DateTimeField
+                  presentation="property"
+                  label={t("capture.schedule")}
+                  value={scheduledAt}
+                  onChange={setScheduledAt}
+                />
+                <View className="min-h-12 flex-row items-center gap-2">
+                  <View className="w-24 flex-row items-center gap-2">
+                    <Icon
+                      name="pricetag-outline"
+                      size={15}
+                      className="text-muted-foreground"
                     />
-                  </>
+                    <Text variant="muted" className="shrink text-xs">
+                      {t("capture.labels")}
+                    </Text>
+                  </View>
+                  <Input
+                    className="flex-1 border-0 bg-transparent px-0 text-sm"
+                    accessibilityLabel={t("production.tags")}
+                    placeholder={t("production.none")}
+                    value={tags}
+                    onChangeText={setTags}
+                  />
+                </View>
+              </View>
+              <View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t("capture.moreProperties")}
+                  accessibilityState={{ expanded: propertiesOpen }}
+                  onPress={() => setPropertiesOpen(!propertiesOpen)}
+                  className="min-h-12 flex-row items-center gap-2"
+                >
+                  <Icon
+                    name={propertiesOpen ? "chevron-up" : "chevron-down"}
+                    size={15}
+                    className="text-muted-foreground"
+                  />
+                  <Text variant="muted" className="text-xs">
+                    {t("capture.moreProperties")}
+                  </Text>
+                </Pressable>
+                {propertiesOpen && (
+                  <View className="gap-3 pb-3">
+                    {item && !item.done && (
+                      <Button
+                        variant="outline"
+                        label={t("production.snooze")}
+                        onPress={() =>
+                          command.mutate(
+                            { type: "item.snooze", id: item.id, minutes: 10 },
+                            { onSuccess: () => router.back() },
+                          )
+                        }
+                      />
+                    )}
+                    <DateTimeField
+                      label={t("production.deadline")}
+                      value={task.deadline}
+                      onChange={(value) => patch({ deadline: value })}
+                    />
+                    <Select
+                      presentation="property"
+                      icon="list-outline"
+                      label={t("production.section")}
+                      value={task.sectionId ?? ""}
+                      options={[
+                        { value: "", label: t("production.noSection") },
+                        ...(
+                          snapshot.workspace.projects.find(
+                            (value) => value.id === task.projectId,
+                          )?.sections ?? []
+                        ).map((value) => ({
+                          value: value.id,
+                          label: value.name,
+                        })),
+                      ]}
+                      onChange={(value) => patch({ sectionId: value || null })}
+                    />
+                    <Select
+                      presentation="property"
+                      icon="return-up-back-outline"
+                      label={t("production.parent")}
+                      value={task.parentId ?? ""}
+                      options={[
+                        { value: "", label: t("production.none") },
+                        ...snapshot.items
+                          .filter(
+                            (value) =>
+                              value.kind === "task" &&
+                              value.id !== item?.id &&
+                              value.task.projectId === task.projectId,
+                          )
+                          .map((value) => ({
+                            value: value.id,
+                            label: value.title,
+                          })),
+                      ]}
+                      onChange={(value) => patch({ parentId: value || null })}
+                    />
+                    <Input
+                      accessibilityLabel={t("production.duration")}
+                      placeholder={t("production.duration")}
+                      value={String(task.durationMinutes)}
+                      onChangeText={(value) =>
+                        patch({ durationMinutes: Number(value) })
+                      }
+                      keyboardType="number-pad"
+                    />
+                    <Select
+                      presentation="property"
+                      icon="repeat-outline"
+                      label={t("production.repeat")}
+                      value={recurrence}
+                      options={[
+                        "none",
+                        "daily",
+                        "weekly",
+                        "monthly",
+                        "weekdays",
+                        "custom",
+                      ].map((value) => ({
+                        value,
+                        label: t(`recurrence.${value}`),
+                      }))}
+                      onChange={(value) =>
+                        setRecurrence(value as Item["recurrence"])
+                      }
+                    />
+                    {recurrence === "custom" && (
+                      <>
+                        <Input
+                          accessibilityLabel={t("production.interval")}
+                          placeholder={t("production.interval")}
+                          value={String(task.repeat.interval)}
+                          onChangeText={(value) =>
+                            patch({
+                              repeat: {
+                                ...task.repeat,
+                                interval: Number(value),
+                              },
+                            })
+                          }
+                          keyboardType="number-pad"
+                        />
+                        <Select
+                          label={t("production.repeat")}
+                          value={task.repeat.unit}
+                          options={["day", "week", "month"].map((value) => ({
+                            value,
+                            label: t(`recurrence.${value}`),
+                          }))}
+                          onChange={(value) =>
+                            patch({
+                              repeat: {
+                                ...task.repeat,
+                                unit: value as "day" | "week" | "month",
+                              },
+                            })
+                          }
+                        />
+                        <Button
+                          variant="outline"
+                          label={`${t("production.afterCompletion")}: ${t(task.repeat.afterCompletion ? "production.on" : "production.off")}`}
+                          onPress={() =>
+                            patch({
+                              repeat: {
+                                ...task.repeat,
+                                afterCompletion: !task.repeat.afterCompletion,
+                              },
+                            })
+                          }
+                        />
+                      </>
+                    )}
+                    <Select
+                      presentation="property"
+                      icon="document-text-outline"
+                      label={t("production.linkedNote")}
+                      value={linkedNoteId}
+                      options={[
+                        { value: "", label: t("production.none") },
+                        ...notes.map((value) => ({
+                          value: value.id,
+                          label: value.title,
+                        })),
+                      ]}
+                      onChange={setLinkedNoteId}
+                    />
+                    <Input
+                      accessibilityLabel={t("production.assignee")}
+                      placeholder={t("production.assignee")}
+                      value={task.assignee}
+                      onChangeText={(value) => patch({ assignee: value })}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                    <View className="gap-3">
+                      <Text variant="heading">{t("production.reminders")}</Text>
+                      {task.reminders.map((value, index) => (
+                        <DateTimeField
+                          key={index}
+                          label={t("production.notifyAt")}
+                          value={value}
+                          onChange={(next) =>
+                            patch({
+                              reminders: next
+                                ? task.reminders.map((old, at) =>
+                                    at === index ? next : old,
+                                  )
+                                : task.reminders.filter(
+                                    (_, at) => at !== index,
+                                  ),
+                            })
+                          }
+                        />
+                      ))}
+                      <Button
+                        variant="outline"
+                        label={t("production.addReminder")}
+                        loading={nativeAction.isPending}
+                        onPress={() =>
+                          nativeAction.mutate(async () => {
+                            await enableReminders();
+                            patch({
+                              reminders: [
+                                ...task.reminders,
+                                dayjs().add(1, "hour").second(0).toISOString(),
+                              ],
+                            });
+                          })
+                        }
+                        disabled={task.reminders.length >= 20}
+                      />
+                      {nativeAction.error?.message === "notificationDenied" && (
+                        <>
+                          <Text
+                            accessibilityRole="alert"
+                            className="text-destructive"
+                          >
+                            {t("production.notificationDenied")}
+                          </Text>
+                          <Button
+                            variant="outline"
+                            label={t("production.notificationSettings")}
+                            onPress={() => router.push("/data")}
+                          />
+                        </>
+                      )}
+                    </View>
+                  </View>
                 )}
               </View>
-              <View className="gap-3">
-                <Text variant="heading">{t("production.comments")}</Text>
+              <View className="gap-2 border-t border-border pt-4">
+                <Text variant="label">{t("capture.details")}</Text>
+                <Input
+                  accessibilityLabel={t("capture.details")}
+                  value={body}
+                  onChangeText={setBody}
+                  placeholder={t("capture.detailsPlaceholder")}
+                  multiline
+                  textAlignVertical="top"
+                  maxLength={200000}
+                  className="min-h-24 border-0 bg-transparent px-0 text-sm leading-6"
+                />
+              </View>
+              {item && (
+                <View className="gap-3 border-t border-border pt-4">
+                  <View className="flex-row items-center gap-2">
+                    <Icon
+                      name="list-outline"
+                      size={16}
+                      className="text-muted-foreground"
+                    />
+                    <Text variant="label">{t("production.subtasks")}</Text>
+                  </View>
+                  {snapshot.items
+                    .filter((value) => value.task.parentId === item.id)
+                    .map((value) => (
+                      <View
+                        key={value.id}
+                        className="flex-row items-start gap-2"
+                      >
+                        <Pressable
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={t(
+                            value.done ? "items.reopen" : "items.complete",
+                            { title: value.title },
+                          )}
+                          accessibilityState={{
+                            checked: value.done,
+                            disabled: command.isPending,
+                          }}
+                          disabled={command.isPending}
+                          onPress={() =>
+                            command.mutate({
+                              type: "item.toggle",
+                              id: value.id,
+                            })
+                          }
+                          className="min-h-12 w-11 items-center justify-center"
+                        >
+                          <Icon
+                            name={
+                              value.done ? "checkbox-outline" : "square-outline"
+                            }
+                            size={20}
+                            className="text-muted-foreground"
+                          />
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={t("common.edit", {
+                            title: value.title,
+                          })}
+                          onPress={() =>
+                            router.push({
+                              pathname: "/capture",
+                              params: { id: value.id },
+                            })
+                          }
+                          className="min-h-12 flex-1 justify-center py-2"
+                        >
+                          <Text
+                            className={
+                              value.done
+                                ? "text-sm text-muted-foreground line-through"
+                                : "text-sm"
+                            }
+                          >
+                            {value.title}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ))}
+                  <Button
+                    variant="ghost"
+                    icon="add"
+                    className="self-start"
+                    label={t("production.addSubtask")}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/capture",
+                        params: {
+                          parentId: item.id,
+                          projectId: task.projectId ?? "",
+                        },
+                      })
+                    }
+                  />
+                </View>
+              )}
+              <View className="gap-3 border-t border-border pt-4">
+                <View className="flex-row items-center gap-2">
+                  <Icon
+                    name="chatbubble-outline"
+                    size={16}
+                    className="text-muted-foreground"
+                  />
+                  <Text variant="label">
+                    {t("production.comments")} ({task.comments.length})
+                  </Text>
+                </View>
                 {task.comments.map((value) => (
                   <View
                     key={value.id}
-                    className="gap-2 rounded-md border border-border p-3"
+                    className="gap-2 border-s-2 border-border ps-3 py-1"
                   >
                     <Text>{value.body}</Text>
                     {value.attachments.map((file) => (
@@ -583,7 +767,7 @@ function CaptureForm({
                   maxLength={20000}
                 />
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   label={t("production.addComment")}
                   disabled={!comment.trim()}
                   onPress={() => {
@@ -603,7 +787,9 @@ function CaptureForm({
                 />
                 {currentItem && (
                   <Button
-                    variant="outline"
+                    variant="ghost"
+                    icon="attach-outline"
+                    className="self-start"
                     label={t("production.addAttachment")}
                     loading={nativeAction.isPending}
                     onPress={() =>
@@ -616,39 +802,6 @@ function CaptureForm({
                   />
                 )}
               </View>
-              {item && (
-                <View className="gap-3">
-                  <Text variant="heading">{t("production.subtasks")}</Text>
-                  {snapshot.items
-                    .filter((value) => value.task.parentId === item.id)
-                    .map((value) => (
-                      <Button
-                        key={value.id}
-                        variant="outline"
-                        label={value.title}
-                        onPress={() =>
-                          router.push({
-                            pathname: "/capture",
-                            params: { id: value.id },
-                          })
-                        }
-                      />
-                    ))}
-                  <Button
-                    variant="outline"
-                    label={t("production.addSubtask")}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/capture",
-                        params: {
-                          parentId: item.id,
-                          projectId: task.projectId ?? "",
-                        },
-                      })
-                    }
-                  />
-                </View>
-              )}
             </>
           )}
           {!!autosaveError && (
@@ -689,8 +842,9 @@ function CaptureForm({
           )}
           {item && (
             <Button
-              variant="outline"
+              variant="ghost"
               label={t("production.delete")}
+              icon="trash-outline"
               onPress={() =>
                 command.mutate(
                   { type: "item.delete", id: item.id },
@@ -713,8 +867,17 @@ function CaptureForm({
             }}
           />
         )}
-        <View className="border-t border-border px-5 py-3">
+        <View className="flex-row items-center gap-3 border-t border-border px-5 py-3">
+          {!isNote && (
+            <Button
+              variant="ghost"
+              label={t("common.cancel")}
+              onPress={() => router.back()}
+              disabled={save.isPending}
+            />
+          )}
           <Button
+            className="flex-1"
             icon="checkmark"
             label={t(
               item

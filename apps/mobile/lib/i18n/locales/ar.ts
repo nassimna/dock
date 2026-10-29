@@ -138,6 +138,8 @@ export const ar: Translation & {
     unscheduled: "دون تاريخ",
   },
   capture: {
+    labels: "الوسوم",
+    moreProperties: "خصائص إضافية",
     newTask: "مهمة جديدة",
     newNote: "ملاحظة جديدة",
     editTask: "تعديل المهمة",

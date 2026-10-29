@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Modal, FlatList, Pressable, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "./button";
-import { Icon } from "./icon";
+import { Icon, type IconName } from "./icon";
 import { Text } from "./text";
 
 export function Select({
@@ -11,7 +11,11 @@ export function Select({
   value,
   options,
   onChange,
+  presentation = "field",
+  icon,
 }: {
+  presentation?: "field" | "property";
+  icon?: IconName;
   label: string;
   value: string;
   options: readonly { value: string; label: string }[];
@@ -19,21 +23,43 @@ export function Select({
 }) {
   const [open, setOpen] = useState(false);
   const { t } = useTranslation();
+  const selectedLabel =
+    options.find((option) => option.value === value)?.label ?? value;
   return (
     <>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={label}
         onPress={() => setOpen(true)}
-        className="min-h-12 flex-row items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-3"
+        className={
+          presentation === "property"
+            ? "min-h-12 flex-row items-center gap-2 py-1"
+            : "min-h-12 flex-row items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-3"
+        }
       >
-        <View className="flex-1 gap-1">
-          <Text variant="muted">{label}</Text>
-          <Text>
-            {options.find((option) => option.value === value)?.label ?? value}
-          </Text>
-        </View>
-        <Icon name="chevron-down" className="text-muted-foreground" />
+        {presentation === "property" ? (
+          <>
+            <View className="w-24 flex-row items-center gap-2">
+              {icon && (
+                <Icon name={icon} size={15} className="text-muted-foreground" />
+              )}
+              <Text variant="muted" className="shrink text-xs">
+                {label}
+              </Text>
+            </View>
+            <Text className="flex-1 text-sm">{selectedLabel}</Text>
+          </>
+        ) : (
+          <View className="flex-1 gap-1">
+            <Text variant="muted">{label}</Text>
+            <Text>{selectedLabel}</Text>
+          </View>
+        )}
+        <Icon
+          name="chevron-down"
+          size={presentation === "property" ? 14 : undefined}
+          className="text-muted-foreground"
+        />
       </Pressable>
       <Modal
         visible={open}

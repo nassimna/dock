@@ -133,6 +133,8 @@ export const en = {
     unscheduled: "No date",
   },
   capture: {
+    labels: "Labels",
+    moreProperties: "More properties",
     newTask: "New task",
     newNote: "New note",
     editTask: "Edit task",

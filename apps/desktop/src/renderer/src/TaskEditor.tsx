@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
 import { useEffect, useRef, useState } from 'react';
-import { MessageSquare, Paperclip, Plus, Trash2, X } from 'lucide-react';
+import { Bell, CalendarDays, ChevronDown, FileText, Flag, Folder, ListChecks, MessageSquare, Paperclip, Plus, SlidersHorizontal, Tag, Trash2, X } from 'lucide-react';
 import { dateTimeInput, taskPropertiesSchema, type Item, type Snapshot, type TaskProperties } from '@dock/contracts';
 import { parseTaskText } from './lib/tasks';
 import { ActionButton, LabelPicker, RecognizedTokens } from './components';
@@ -24,7 +24,7 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
   switching?: boolean;
   onKeep?: () => void;
 }) {
-  const titleInput = useRef<HTMLInputElement>(null);
+  const titleInput = useRef<HTMLTextAreaElement>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
   const [revision, setRevision] = useState(item?.revision);
@@ -136,14 +136,22 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
     document.addEventListener('keydown', close);
     return () => document.removeEventListener('keydown', close);
   });
+  useEffect(() => {
+    const input = titleInput.current;
+    if (input) { input.style.height = 'auto'; input.style.height = `${input.scrollHeight}px`; }
+  }, [title]);
   const heading = item ? 'Task details' : 'New task';
   const form = <form onSubmit={event => { event.preventDefault(); void run(() => persist(true)); }}>
-        <div className="dialog-heading">{panel ? <><h2>{heading}</h2><ActionButton type="button" aria-label="Close task details" onClick={requestClose}><X size="1rem" /></ActionButton></> : <DialogTitle>{heading}</DialogTitle>}</div>
+        <div className="dialog-heading">{panel ? <><h2>{project?.name ?? heading}</h2><ActionButton type="button" aria-label="Close task details" onClick={requestClose}><X size="1rem" /></ActionButton></> : <DialogTitle>{heading}</DialogTitle>}</div>
         <div className="dialog-body" inert={busy}>
-          <Label className="field">
-            Title
-            <Input
+          <FileText className="task-page-icon" aria-hidden="true" />
+          <Label className="field task-title-field">
+            <span className="sr-only">Title</span>
+            <Textarea
               ref={titleInput}
+              aria-label="Title"
+              rows={1}
+              onKeyDown={event => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); } }}
               value={title}
               onChange={event => setTitle(event.target.value)}
               required
@@ -151,13 +159,9 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
               placeholder="Review proposal next Tue 9am p2" />
           </Label>
           <RecognizedTokens tokens={parsed?.recognized ?? []} onKeep={token => setIgnored(current => [...current, token.toLowerCase()])} />
-          <Label className="field">
-            Notes
-            <Textarea value={body} onChange={event => setBody(event.target.value)} rows={3} maxLength={200000} placeholder="Add context…" />
-          </Label>
-          <div className="fields">
+          <div className="fields task-primary-fields">
             <div className="field">
-              <Label htmlFor="task-project">Project</Label>
+              <Label htmlFor="task-project"><Folder size="0.875rem" />Project</Label>
               <Select value={task.projectId ?? 'none'} disabled={!!item && snapshot.syncFeatures.projects.some(project => project.id === item.task.projectId)} onValueChange={value => patch({ projectId: value === 'none' ? null : value, sectionId: null, assignee: '' })}>
                 <SelectTrigger id="task-project"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -166,6 +170,26 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
                 </SelectContent>
               </Select>
             </div>
+            <div className="field">
+              <Label htmlFor="task-priority"><Flag size="0.875rem" />Priority</Label>
+              <Select value={String(task.priority)} onValueChange={value => patch({ priority: Number(value) as TaskProperties['priority'] })}>
+                <SelectTrigger id="task-priority"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4].map(priority => <SelectItem key={priority} value={String(priority)}>P{priority}{priority === 4 ? ' · Normal' : ''}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <Label className="field"><span className="task-property-label"><CalendarDays size="0.875rem" />Schedule</span><DateTimePicker label="Schedule" value={scheduled} onChange={value => { markManual('scheduled'); setScheduled(value); }} /></Label>
+            <div className="field">
+              <span className="task-property-label"><Tag size="0.875rem" />Labels</span>
+              <LabelPicker value={tags} suggestions={[...snapshot.workspace.labels, ...snapshot.items.flatMap(item => item.tags)]}
+                onChange={next => { markManual('tags'); setTags(next); }} />
+            </div>
+          </div>
+          <details className="task-properties">
+            <summary><SlidersHorizontal size="1rem" /><span>More properties</span><ChevronDown size="0.875rem" /></summary>
+            <div className="task-properties-body">
+            <div className="fields">
             <div className="field">
               <Label htmlFor="task-section">Section</Label>
               <Select value={task.sectionId ?? 'none'} onValueChange={value => patch({ sectionId: value === 'none' ? null : value })}>
@@ -176,16 +200,6 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
                 </SelectContent>
               </Select>
             </div>
-            <div className="field">
-              <Label htmlFor="task-priority">Priority</Label>
-              <Select value={String(task.priority)} onValueChange={value => patch({ priority: Number(value) as TaskProperties['priority'] })}>
-                <SelectTrigger id="task-priority"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4].map(priority => <SelectItem key={priority} value={String(priority)}>P{priority}{priority === 4 ? ' · Normal' : ''}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <Label className="field">Schedule<DateTimePicker label="Schedule" value={scheduled} onChange={value => { markManual('scheduled'); setScheduled(value); }} /></Label>
             <Label className="field">
               Deadline
               <DateTimePicker
@@ -205,11 +219,6 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
                 onChange={event => patch({ durationMinutes: Number(event.target.value) })} />
             </Label>
             <div className="field">
-              Labels
-              <LabelPicker value={tags} suggestions={[...snapshot.workspace.labels, ...snapshot.items.flatMap(item => item.tags)]}
-                onChange={next => { markManual('tags'); setTags(next); }} />
-            </div>
-            <div className="field">
               <Label htmlFor="task-recurrence">Repeat</Label>
               <Select value={recurrence} onValueChange={value => { markManual('recurrence'); setRecurrence(value as Item['recurrence']); }}>
                 <SelectTrigger id="task-recurrence"><SelectValue /></SelectTrigger>
@@ -228,7 +237,7 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
                 </SelectContent>
               </Select>
             </div>
-          </div>
+            </div>
           {recurrence === 'custom' && <div className="repeat-options">
             <Label>
               Every
@@ -268,7 +277,7 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
               placeholder="Email address" />}
           </Label>
           <section className="detail-section" aria-label="Reminders">
-            <h3>Reminders</h3>
+            <h3><Bell size="0.9375rem" />Reminders</h3>
             <p className="muted">The scheduled time also sends a reminder. Add up to 20 extra times.</p>
             {task.reminders.map(value => <div className="detail-line" key={value}>
               <span>{new Date(value).toLocaleString()}</span>
@@ -291,8 +300,14 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
                 onClick={() => { patch({ reminders: [...new Set([...task.reminders, new Date(reminder).toISOString()])] }); setReminder(''); }}>Add reminder</Button>
             </div>
           </section>
+            </div>
+          </details>
+          <Label className="field task-page-notes">
+            Notes
+            <Textarea value={body} onChange={event => setBody(event.target.value)} rows={2} maxLength={200000} placeholder="Add context…" />
+          </Label>
           {item && <section className="detail-section" aria-label="Subtasks">
-            <h3>Subtasks <small>{children.filter(child => child.done).length}/{children.length}</small></h3>
+            <h3><ListChecks size="1rem" />Subtasks <small>{children.filter(child => child.done).length}/{children.length}</small></h3>
             {children.map(child => <div className="detail-line" key={child.id}>
               <Checkbox
                 checked={child.done}
@@ -320,7 +335,7 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
             </div>
           </section>}
           <section className="detail-section" aria-label="Comments">
-            <h3><MessageSquare size="0.9375rem" /> Comments</h3>
+            <h3><MessageSquare size="1rem" />Comments <small>{task.comments.length}</small></h3>
             {task.comments.map(comment => <article className="task-comment" key={comment.id}>
               <small>{new Date(comment.createdAt).toLocaleString()}</small>
               <p>{comment.body}</p>
@@ -371,7 +386,7 @@ export function TaskEditor({ item, defaults, snapshot, dispatch, onClose, onDele
         </div>
         <div className="dialog-footer">
           {item ? <Button variant="ghost" type="button" className="danger" disabled={busy} onClick={() => onDelete(item)}>Delete task</Button> : <span />}
-          <Button disabled={busy}>{busy ? 'Saving…' : 'Save task'}</Button>
+          <div className="task-page-actions"><Button variant="ghost" type="button" disabled={busy} onClick={requestClose}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Save task'}</Button></div>
         </div>
       </form>;
   return <>
