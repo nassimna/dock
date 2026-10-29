@@ -1,0 +1,9 @@
+{
+  "name": "@dock/sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-auth": "1.7.14"
+  }
+}

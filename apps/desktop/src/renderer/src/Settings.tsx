@@ -6,11 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { TimePicker } from "@/components/ui/time-picker";
 import { floatingStyle } from "@/lib/theme";
 import { useEffect, useState } from "react";
-import { Bell, Download, Keyboard, ListFilter, Terminal } from "lucide-react";
+import { Bell, Download, Keyboard, ListFilter, Terminal, Palette, Monitor, UserRound, ChevronRight, Database, type LucideIcon } from "lucide-react";
 import { floatingStyleSchema, settingsSchema, type Settings as Preferences, type Snapshot } from "@dock/contracts";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { DataSettings } from "./DataSettings";
-import { SyncSettings } from "./SyncSettings";
 import { UpdateDetails } from "./Updates";
 import { Shortcut } from "./components";
 import type { Act, Dispatch } from "./state";
@@ -19,13 +18,14 @@ export function Settings({
   snapshot,
   dispatch,
   act,
-  onReviewConflicts,
+  onAccount,
 }: {
   snapshot: Snapshot;
   dispatch: Dispatch;
   act: Act;
-  onReviewConflicts: () => void;
+  onAccount: () => void;
 }) {
+  const [category, setCategory] = useState("general");
   const [draft, setDraft] = useState<Preferences>(snapshot.settings);
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState("");
@@ -84,13 +84,26 @@ export function Settings({
 
   }
   return (
-    <div className="settings">
-      <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch} onReviewConflicts={onReviewConflicts} />
+    <div className="settings settings-workspace">
+      <nav className="settings-nav" aria-label="Settings categories">
+        {([
+          ["general", "General", Monitor], ["appearance", "Appearance", Palette],
+          ["floating", "Floating icon", ListFilter], ["notifications", "Notifications", Bell],
+          ["data", "Data & backups", Database], ["updates", "Updates", Download],
+        ] satisfies [string, string, LucideIcon][]).map(([id, title, Icon]) => <Button key={id} type="button" variant="ghost"
+          aria-current={category === id ? "page" : undefined}
+          onClick={() => { setCategory(id); setRecording(false); setStatus(""); }}>
+          <Icon size="1rem" /><span>{title}</span>
+        </Button>)}
+      </nav>
+      <div className="settings-content">
+      {category === "general" && <button type="button" className="settings-account-card" onClick={onAccount}>
+        <UserRound size={24} /><span><strong>{snapshot.sync.connected ? snapshot.sync.email : "Your Rivnote account"}</strong>
+        <small>{snapshot.sync.connected ? "Sync, security and signed-in devices" : "Sign in to keep your notes and tasks with you"}</small></span><ChevronRight size={18} />
+      </button>}
       <form onSubmit={event => event.preventDefault()}>
-        <div className="preferences-save">
-          <span role="status">{status || "Changes save automatically."}</span>
-        </div>
-        <section aria-label="Floating icon settings">
+        {category !== "updates" && category !== "data" && <div className="preferences-save"><span role="status">{status || "Changes save automatically."}</span></div>}
+        {category === "floating" && <section aria-label="Floating icon settings">
           <h2><ListFilter size="1.0625rem" /> Floating icon</h2>
           <p>Small and always available while Rivnote runs. Click to toggle tasks, or drag the icon to move it.</p>
           <div className="floating-settings-layout">
@@ -134,9 +147,9 @@ export function Settings({
             <Button type="button" variant="ghost" size="sm" onClick={() => setDraft(current => ({ ...current, floating: floatingStyleSchema.parse({}) }))}>Restore icon defaults</Button>
           </div>
           <small className="muted">Position and appearance are remembered. Minimizing the app or task panel keeps the icon available. Hide it explicitly from its right-click menu.</small>
-        </section>
-        <AppearanceSettings draft={draft} setDraft={setDraft} snapshot={snapshot} act={act} />
-        <section>
+        </section>}
+        {category === "appearance" && <AppearanceSettings draft={draft} setDraft={setDraft} snapshot={snapshot} act={act} />}
+        {category === "general" && <section>
           <h2>
             <Keyboard size="1.0625rem" /> Quick capture
           </h2>
@@ -168,8 +181,8 @@ export function Settings({
               ? "Registered with the system"
               : "Unavailable — choose another shortcut"}
           </small>
-        </section>
-        <section>
+        </section>}
+        {category === "notifications" && <section>
           <h2>
             <Bell size="1.0625rem" /> Reminders
           </h2>
@@ -207,8 +220,8 @@ export function Settings({
               {snapshot.system.notificationError}
             </p>
           )}
-        </section>
-        <section>
+        </section>}
+        {category === "general" && <section>
           <h2>Desktop behavior</h2>
           <Label className="checkbox-label">
             <Checkbox checked={draft.rememberLastView} onCheckedChange={checked => setDraft({ ...draft, rememberLastView: checked === true })} />
@@ -266,8 +279,8 @@ export function Settings({
               Wayland does not support the native always-on-top mini window.
             </p>
           )}
-        </section>
-        <section>
+        </section>}
+        {category === "updates" && <section>
           <h2><Download size="1.0625rem" /> Updates</h2>
           <Label className="checkbox-label">
             <Checkbox checked={draft.automaticUpdates} disabled={snapshot.update.status === "unavailable"}
@@ -276,17 +289,17 @@ export function Settings({
           </Label>
           <p>Rivnote only restarts when you choose to install an update.</p>
           <UpdateDetails update={snapshot.update} version={snapshot.system.version} act={act} />
-        </section>
+        </section>}
       </form>
-      <DataSettings snapshot={snapshot} dispatch={dispatch} />
-      <section>
+      {(category === "data" || category === "notifications") && <DataSettings snapshot={snapshot} dispatch={dispatch} section={category === "data" ? "backups" : "reminders"} />}
+      {category === "data" && <><section>
         <h2>
           <Download size="1.0625rem" /> Your data
         </h2>
         <p>
           Tasks, notes, and preferences are saved on this computer, even offline.
-          Changes appear immediately in your other Rivnote windows. Connect your
-          account above to sync with your other devices.
+          Changes appear immediately in your other Rivnote windows. Sign in to your
+          account to sync with your other devices.
         </p>
         <Input
           className="data-path"
@@ -314,7 +327,8 @@ export function Settings({
         <small className="muted">
           Rivnote {snapshot.system.version} · Local desktop edition
         </small>
-      </section>
+      </section></>}
+      </div>
     </div>
   );
 }

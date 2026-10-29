@@ -3,7 +3,7 @@ import { Database, Bell, Download, RefreshCw, Upload } from 'lucide-react';
 import type { Snapshot, Command } from '@dock/contracts';
 import { Button } from '@/components/ui/button';
 import { errorMessage, type Dispatch } from './state';
-export function DataSettings({ snapshot, dispatch }: { snapshot: Snapshot; dispatch: Dispatch; }) {
+export function DataSettings({ snapshot, dispatch, section }: { snapshot: Snapshot; dispatch: Dispatch; section: "backups" | "reminders"; }) {
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState('');
   async function run(command: Command) {
@@ -13,7 +13,7 @@ export function DataSettings({ snapshot, dispatch }: { snapshot: Snapshot; dispa
   }
   const services = snapshot.localServices;
   return <>
-    <section>
+    {section === "backups" && <section>
       <h2><Database size="1.0625rem" />Backup &amp; import</h2>
       <p>Automatic daily backups stay on this computer. Restoring recovers missing or deleted records and preserves current items. Keep an exported copy somewhere safe.</p>
       <div className="settings-actions">
@@ -37,8 +37,8 @@ export function DataSettings({ snapshot, dispatch }: { snapshot: Snapshot; dispa
         </div>) : <p className="muted">Your first backup will appear here.</p>}
       </div>
       {services.message && <p role="status">{services.message}</p>}
-    </section>
-    <section>
+    </section>}
+    {section === "reminders" && <section>
       <h2><Bell size="1.0625rem" />Reminder activity</h2>
       <p>“Shown” means the operating system acknowledged displaying the notification. It does not confirm you read it. Failed attempts retry up to three times; quiet hours pause delivery.</p>
       <div className="reminder-log">
@@ -55,7 +55,7 @@ export function DataSettings({ snapshot, dispatch }: { snapshot: Snapshot; dispa
           </Button>}
         </div>) : <p className="muted">Reminder attempts will appear here when tasks become due.</p>}
       </div>
-    </section>
+    </section>}
     {failure && <p className="note-error" role="alert">{failure}</p>}
   </>;
 }

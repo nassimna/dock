@@ -1,30 +1,36 @@
 # Rivnote sync backend
 
-A Cloudflare Worker backed by D1. Rivnote keeps SQLite locally; signing in is optional. There is no Supabase or email service dependency.
+A Cloudflare Worker backed by D1, using Better Auth 1.7.14 for email/password authentication and sessions. Rivnote keeps SQLite locally; signing in is optional. There is no Supabase or email service dependency.
 
 Hosted on Nassim's personal Cloudflare account (`666ee3e55d6cef8ebeb2804d959cad8e`), using the `rivnote-sync` Worker and D1 database. Existing hosted clients normalize the retired Dock origin to the personal origin while retaining their account, session and queued edits.
 
-## Deployment
+## Authentication and deployment
 
-Deployment creates a Worker and a D1 database and requires the Cloudflare account owner's authorization. Nothing in the local test commands creates cloud resources or containers. Wrangler is a deployment tool, not an added project dependency; use an existing Wrangler installation.
+Better Auth runs only in the Worker. The desktop main process and native mobile sync engine keep their existing `/auth/*` JSON protocol, encrypted session storage and account binding. The Expo and Electron SDK plugins are unnecessary for this email/password flow; there is no browser sign-in page, cookie persistence or deep-link exchange.
 
-From `apps/sync`, after authorization:
+The Worker exposes only the native API. It does not expose Better Auth's raw handler or allow browser-origin requests. Signup/sign-in use Better Auth's APIs, session reads use `getSession`, and sign-out uses `signOut`. The Cloudflare `AUTH_LIMITER` binding limits sign-in and recovery by source IP and normalized email.
 
-1. Authenticate Wrangler to the intended Cloudflare account (`wrangler whoami` verifies the target).
-2. Run `wrangler d1 create rivnote-sync`. Copy the returned database ID into `wrangler.jsonc`. Confirm the rate-limit namespace ID is unused in that account, or choose another one.
-3. Apply the migration to **this new database only**: `wrangler d1 migrations apply rivnote-sync --remote`.
-4. Generate a random `PASSWORD_PEPPER` with your password manager. Set it through Wrangler's interactive prompt:
-   ```sh
-   wrangler secret put PASSWORD_PEPPER
-   ```
-5. Run `wrangler deploy`. Use a Workers plan with enough CPU for password hashing; authentication must be measured in the Cloudflare runtime before considering it production-verified.
-6. In Rivnote → Preferences → Sync across devices, use the built-in hosted origin, or open Advanced for a custom server. Create an account using your email and a password of at least 12 characters. Sign in with that email/password on each additional device.
+Sessions expire after 30 days. An app receives a `UUID.secret` bearer token where the secret is an HMAC derivative of Better Auth's internal session token, keyed by `BETTER_AUTH_SECRET`. Only the public token hash is indexed in D1; Better Auth's internal token is never returned by the API. This preserves the existing native protocol without making stored internal tokens usable as public bearer credentials. Device listing exposes hashed identifiers, and revocation remains scoped to the authenticated account. Preserve `BETTER_AUTH_SECRET`: rotating it requires a deliberate session migration or sign-in again.
 
-The compatibility date enables Workers' Node.js support, including `node:crypto`. Passwords use scrypt (`N=32768, r=8, p=3`) with a random salt and a Worker-secret HMAC pepper. Preserve the pepper securely: replacing it invalidates existing password hashes.
+New passwords use Better Auth's scrypt implementation. Migrated credentials retain a versioned legacy salt/hash and verify with the original HMAC-peppered scrypt (`N=32768, r=8, p=3`). `PASSWORD_PEPPER` is still required for those accounts and must not be changed. A password reset replaces the migrated credential; the old password columns never authenticate.
 
-Registration is public and rate-limited; no invitation is required. Email identifies the account; it is not verified. Signup returns a one-time recovery code. A signed-in device can generate a replacement code in Preferences; the new code invalidates the previous one. The code resets the password without an email service, revokes every existing session, and issues a replacement code and session. No verification or reset emails are sent. Losing both the password and recovery code requires help from the server owner. Device sessions show their computer name in Preferences and can be revoked individually. Sessions expire after 30 days. Online disconnect revokes the current session; offline disconnect only removes the encrypted local session.
+Email identifies an account but is not verified. No email provider is configured. Recovery codes remain supported: they rotate once, reset the password, revoke both old and Better Auth sessions and return a replacement code/session. This extension uses a conditional atomic D1 `batch()` because the Better Auth D1 adapter cannot use interactive transactions. Local data and sync ownership do not change.
 
-The Worker has no CORS access for browser clients; the Electron main process and native Android client own network access. Bearer session hashes, not raw session tokens, are stored in D1. Authentication is rate-limited by account identifier and source IP.
+### Upgrade the existing deployment
+
+These steps change production and require authorization. Local checks do not apply remote migrations or create cloud resources.
+
+1. From `apps/sync`, use the existing Wrangler installation and run `wrangler whoami`. Confirm the intended personal Cloudflare account and the existing `rivnote-sync` Worker/D1 IDs in `wrangler.jsonc`. **Do not create another database.**
+2. Take a protected D1 export before the cutover. Keep the export outside the repository; it contains account data and password hashes.
+3. Generate and set a new stable secret through Wrangler's interactive prompt: `wrangler secret put BETTER_AUTH_SECRET`. Keep the existing `PASSWORD_PEPPER` unchanged. Neither secret belongs in source control.
+4. Quiesce the old Worker for the migration: it must not create users or sessions during cutover. Apply `wrangler d1 migrations apply rivnote-sync --remote`. Migration `0003_better_auth.sql` copies users with their original IDs, moves password hashes to Better Auth credential rows, preserves recovery codes, sync records and legacy sessions, and blanks the superseded password columns. The old Worker cannot authenticate after those columns are blanked. Deploy the prepared Worker immediately after migration.
+5. Run `wrangler deploy`. The configuration enables `nodejs_compat`. Verify signup, an existing account's login, a pre-upgrade session, device revocation and desktop/mobile sync against the deployed Worker before calling the upgrade production-verified. Measure password hashing under the configured Workers CPU limit.
+
+Do not roll back only the Worker to the pre-migration version: its credential columns have been retired. A rollback must restore a coordinated database/Worker backup while accounting for writes since cutover.
+
+For a new self-hosted installation, create a dedicated D1 database, set its ID in your own configuration, apply all migrations, and set both secrets before deployment. Do not reuse the hosted database IDs for another installation.
+
+Online sign-out revokes the current session; offline sign-out only removes its encrypted local copy. Legacy hashed sessions stay valid until their existing expiry and appear beside new sessions in device management. Recovery revokes both generations. There is no fallback to legacy passwords after migration.
 
 ## Sync behavior
 
@@ -54,3 +60,5 @@ Local attachment bytes never upload. Private note links cannot be included in a 
 Native Electron validation performed in this workspace also covered email/password signup, encrypted macOS sessions, offline edits, restart, reconnect, expired sessions, and disconnect. Evidence stays in `.validation`. Local adapter tests do not prove Cloudflare CPU limits, rate-limit behavior, or deployed D1 bindings. Live verification must exercise two devices against the deployed Worker before release.
 
 References checked 9 October 2026: [D1 transactional batches](https://developers.cloudflare.com/d1/worker-api/d1-database/), [Workers crypto support](https://developers.cloudflare.com/workers/runtime-apis/nodejs/crypto/), [rate-limit bindings](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/), [OWASP scrypt parameters](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html), [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage).
+
+Better Auth references (checked 2026-10-29): [D1](https://www.better-auth.com/docs/concepts/database), [email/password and custom verification](https://www.better-auth.com/docs/authentication/email-password), [sessions](https://www.better-auth.com/docs/concepts/session-management), [bearer plugin](https://www.better-auth.com/docs/plugins/bearer).

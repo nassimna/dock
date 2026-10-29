@@ -1,40 +1,10 @@
-import { scryptSync, timingSafeEqual } from "node:crypto";
-import { Buffer } from "node:buffer";
-import { recoveryInputSchema, syncFeatureCommandSchema, privateProjectsMutationSchema } from "../../../packages/contracts/src/sync-features.ts";
-import { syncTokenSchema, syncMutationSchema, syncLoginSchema, syncSignupSchema } from "../../../packages/contracts/src/index.ts";
-
-export interface Statement {
-  bind(...values: (string | number | null)[]): Statement;
-  first<T>(): Promise<T | null>;
-  all<T>(): Promise<{ results: T[] }>;
-}
-export interface SyncEnvironment {
-  PASSWORD_PEPPER: string;
-  AUTH_LIMITER: { limit(options: { key: string }): Promise<{ success: boolean }> };
-  DB: {
-    prepare(sql: string): Statement;
-    batch<T>(statements: Statement[]): Promise<{ results: T[] }[]>;
-  };
-}
+import { privateProjectsMutationSchema, syncFeatureCommandSchema } from "../../../packages/contracts/src/sync-features.ts";
+import { syncMutationSchema } from "../../../packages/contracts/src/index.ts";
+import { authenticateRequest, createAuth, manageAccount, randomSecret, recoverAccount, signIn, type SyncEnvironment } from "./auth.ts";
+export type { Statement, SyncEnvironment } from "./auth.ts";
 type RecordRow = { payload: string; version: number };
 
 
-function hex(bytes: Uint8Array): string {
-  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
-}
-function randomSecret(): string { return hex(crypto.getRandomValues(new Uint8Array(32))); }
-async function sha256(value: string): Promise<string> {
-  return hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
-}
-function equal(left: string, right: string): boolean {
-  return left.length === right.length && timingSafeEqual(Buffer.from(left, "hex"), Buffer.from(right, "hex"));
-}
-async function hashPassword(password: string, salt: string, pepper: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const pepperKey = await crypto.subtle.importKey("raw", encoder.encode(pepper), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const material = await crypto.subtle.sign("HMAC", pepperKey, encoder.encode(password));
-  return scryptSync(Buffer.from(material), salt, 32, { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 }).toString("hex");
-}
 async function readJSON(request: Request): Promise<unknown> {
   const reader = request.body?.getReader();
   if (!reader) throw new SyntaxError("A request body is required.");
@@ -61,115 +31,18 @@ export default {
     if (url.pathname === "/health" && request.method === "GET") return json({ ok: true });
     if (!["/auth/signup", "/auth/login", "/auth/recover", "/auth/recovery", "/auth/devices", "/auth/revoke", "/auth/logout", "/account", "/projects", "/projects/invite", "/projects/remove", "/workspace", "/sync"].includes(url.pathname)) return json({ error: "Unknown endpoint." }, 404);
     try {
-      if (url.pathname === "/auth/recover" && request.method === "POST") {
-        if (!(await env.AUTH_LIMITER.limit({ key: `dock:recovery:ip:${request.headers.get("CF-Connecting-IP") ?? "local"}` })).success)
-          return json({ error: "Too many recovery attempts. Try again in a minute." }, 429);
-        const parsed = recoveryInputSchema.safeParse(await readJSON(request));
-        if (!parsed.success) return json({ error: "Enter your email, recovery code, and a password of 12–128 characters." }, 400);
-        const { email, password, recoveryCode } = parsed.data;
-        if (!(await env.AUTH_LIMITER.limit({ key: `dock:recovery:email:${email}` })).success)
-          return json({ error: "Too many recovery attempts. Try again in a minute." }, 429);
-        const account = await env.DB.prepare("SELECT id, recovery_hash FROM accounts WHERE email = ?").bind(email)
-          .first<{ id: string; recovery_hash: string | null }>();
-        const suppliedHash = await sha256(recoveryCode.toLowerCase());
-        if (!account?.recovery_hash || (parsed.data.expectedAccountId && parsed.data.expectedAccountId !== account.id) || !equal(suppliedHash, account.recovery_hash))
-          return json({ error: "Email or recovery code is incorrect." }, 401);
-        const salt = randomSecret();
-        const hash = await hashPassword(password, salt, env.PASSWORD_PEPPER);
-        const replacement = randomSecret();
-        const replacementHash = await sha256(replacement);
-        const token = `${account.id}.${randomSecret()}`;
-        const tokenHash = await sha256(token);
-        const expiresAt = new Date(Date.now() + 30 * 86400_000).toISOString();
-        const result = await env.DB.batch([
-          env.DB.prepare("UPDATE accounts SET password_hash = ?, password_salt = ?, recovery_hash = ? WHERE id = ? AND recovery_hash = ?")
-            .bind(hash, salt, replacementHash, account.id, suppliedHash),
-          env.DB.prepare("DELETE FROM sessions WHERE account_id = ? AND EXISTS (SELECT 1 FROM accounts WHERE id = ? AND recovery_hash = ?)")
-            .bind(account.id, account.id, replacementHash),
-          env.DB.prepare("INSERT INTO sessions(token_hash, account_id, expires_at, device_name) SELECT ?, id, ?, 'Recovered Rivnote desktop' FROM accounts WHERE id = ? AND recovery_hash = ?")
-            .bind(tokenHash, expiresAt, account.id, replacementHash),
-          env.DB.prepare("SELECT token_hash FROM sessions WHERE token_hash = ?").bind(tokenHash),
-        ]);
-        if (!result.at(-1)?.results.length) return json({ error: "The recovery code was already used. Try your latest code." }, 401);
-        return json({ accountId: account.id, email, token, expiresAt, recoveryCode: replacement });
-      }
+      const auth = createAuth(env, url.origin);
+      if (request.headers.has("Origin")) return json({ error: "Use the Rivnote app to access this service." }, 403);
+      if (url.pathname === "/auth/recover" && request.method === "POST") return await recoverAccount(auth, env, request, await readJSON(request));
       if (url.pathname === "/auth/signup" || url.pathname === "/auth/login") {
         if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
-        const ipLimit = await env.AUTH_LIMITER.limit({ key: `dock:auth:ip:${request.headers.get("CF-Connecting-IP") ?? "local"}` });
-        if (!ipLimit.success) return json({ error: "Too many sign-in attempts. Try again in a minute." }, 429);
-        const signup = url.pathname === "/auth/signup";
-        const body = await readJSON(request);
-        const parsed = signup ? syncSignupSchema.safeParse(body) : syncLoginSchema.safeParse(body);
-        if (!parsed.success) return json({ error: "Enter a valid email and a password of 12–128 characters." }, 400);
-        const { email, password } = parsed.data;
-        if (!(await env.AUTH_LIMITER.limit({ key: `dock:auth:email:${email}` })).success)
-          return json({ error: "Too many sign-in attempts. Try again in a minute." }, 429);
-        if (!env.PASSWORD_PEPPER) throw new Error("Missing authentication secret.");
-        const existing = await env.DB.prepare("SELECT id, password_hash, password_salt FROM accounts WHERE email = ?")
-          .bind(email).first<{ id: string; password_hash: string; password_salt: string }>();
-        let accountId: string;
-        let passwordHash = "";
-        let salt = "";
-        const recoveryCode = signup ? randomSecret() : "";
-        if (signup) {
-          if (existing) return json({ error: "Unable to create this account. Try signing in." }, 409);
-          accountId = crypto.randomUUID();
-          salt = randomSecret();
-          passwordHash = await hashPassword(password, salt, env.PASSWORD_PEPPER);
-        } else {
-          const candidate = await hashPassword(password, existing?.password_salt ?? "0".repeat(64), env.PASSWORD_PEPPER);
-          if (!existing || !equal(candidate, existing.password_hash))
-            return json({ error: "Email or password is incorrect." }, 401);
-          accountId = existing.id;
-        }
-        const token = `${accountId}.${randomSecret()}`;
-        const tokenHash = await sha256(token);
-        const expiresAt = new Date(Date.now() + 30 * 86400_000).toISOString();
-        const statements = signup ? [env.DB.prepare(
-          "INSERT INTO accounts(id, email, password_hash, password_salt, recovery_hash) VALUES(?, ?, ?, ?, ?) ON CONFLICT(email) DO NOTHING",
-        ).bind(accountId, email, passwordHash, salt, await sha256(recoveryCode))] : [];
-        const deviceName = typeof (body as { deviceName?: unknown }).deviceName === "string"
-          ? String((body as { deviceName: string }).deviceName).trim().slice(0, 100) : "Rivnote desktop";
-        statements.push(
-          env.DB.prepare("DELETE FROM sessions WHERE account_id = ? AND expires_at <= ?").bind(accountId, new Date().toISOString()),
-          env.DB.prepare("INSERT INTO sessions(token_hash, account_id, expires_at, device_name) SELECT ?, id, ?, ? FROM accounts WHERE id = ?").bind(tokenHash, expiresAt, deviceName || "Rivnote desktop", accountId),
-          env.DB.prepare("SELECT account_id FROM sessions WHERE token_hash = ?").bind(tokenHash),
-        );
-        const results = await env.DB.batch<{ account_id: string }>(statements);
-        if (!results.at(-1)?.results.length) return json({ error: "Unable to create this account. Try signing in." }, 409);
-        return json({ accountId, email, token, expiresAt, ...(signup ? { recoveryCode } : {}) });
+        return await signIn(auth, env, request, await readJSON(request));
       }
-      const token = syncTokenSchema.safeParse(request.headers.get("Authorization")?.replace(/^Bearer /, ""));
-      if (!token.success) return json({ error: "Sign in to sync your devices." }, 401);
-      const accountId = token.data.split(".")[0]!;
-      const tokenHash = await sha256(token.data);
-      const account = await env.DB.prepare(`SELECT accounts.id, accounts.email FROM sessions
-        JOIN accounts ON accounts.id = sessions.account_id
-        WHERE sessions.account_id = ? AND token_hash = ? AND expires_at > ?`)
-        .bind(accountId, tokenHash, new Date().toISOString()).first<{ id: string; email: string }>();
+      const account = await authenticateRequest(auth, env, request);
       if (!account) return json({ error: "Your session expired or was revoked. Sign in again; your local changes are safe." }, 401);
-      if (url.pathname === "/auth/logout" && request.method === "POST") {
-        await env.DB.batch([env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?").bind(tokenHash)]);
-        return json({ ok: true });
-      }
-      if (url.pathname === "/account" && request.method === "GET") return json({ accountId, email: account.email });
-      if (url.pathname === "/auth/recovery" && request.method === "POST") {
-        const recoveryCode = randomSecret();
-        await env.DB.batch([env.DB.prepare("UPDATE accounts SET recovery_hash = ? WHERE id = ?").bind(await sha256(recoveryCode), accountId)]);
-        return json({ recoveryCode });
-      }
-      if (url.pathname === "/auth/devices" && request.method === "GET") {
-        const { results } = await env.DB.prepare("SELECT token_hash, device_name, expires_at FROM sessions WHERE account_id = ? AND expires_at > ? ORDER BY expires_at DESC")
-          .bind(accountId, new Date().toISOString()).all<{ token_hash: string; device_name: string; expires_at: string }>();
-        return json({ devices: results.map(row => ({ id: row.token_hash, name: row.device_name, expiresAt: row.expires_at, current: row.token_hash === tokenHash })) });
-      }
-      if (url.pathname === "/auth/revoke" && request.method === "POST") {
-        const input = syncFeatureCommandSchema.safeParse({ ...(await readJSON(request) as object), type: "sync.device.revoke" });
-        if (!input.success || input.data.type !== "sync.device.revoke") return json({ error: "Invalid device." }, 400);
-        if (input.data.id === tokenHash) return json({ error: "Use Disconnect to sign out this device." }, 400);
-        await env.DB.batch([env.DB.prepare("DELETE FROM sessions WHERE account_id = ? AND token_hash = ?").bind(accountId, input.data.id)]);
-        return json({ ok: true });
-      }
+      const accountId = account.id;
+      const managed = await manageAccount(auth, env, request, account, () => readJSON(request));
+      if (managed) return managed;
       if (url.pathname === "/workspace" && ["GET", "POST"].includes(request.method)) {
         const shared = await env.DB.prepare("SELECT id FROM shared_projects WHERE owner_id = ?").bind(accountId).all<{ id: string }>();
         const sharedIds = new Set(shared.results.map(project => project.id));

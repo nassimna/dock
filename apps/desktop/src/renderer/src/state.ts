@@ -25,7 +25,7 @@ export function useDock() {
       setError("");
       return result;
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (!["sync.login", "sync.signup", "sync.recover", "sync.disconnect", "sync.now", "sync.devices", "sync.device.revoke", "sync.recovery.create"].includes(command.type)) setError(errorMessage(cause));
       throw cause;
     }
   }, []);

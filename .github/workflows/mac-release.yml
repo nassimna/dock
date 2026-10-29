@@ -31,7 +31,7 @@ jobs:
           node-version: 22.22.3
           cache: pnpm
       - name: Install desktop workspace
-        run: pnpm install --frozen-lockfile --filter @dock/desktop... --filter dock
+        run: pnpm install --frozen-lockfile --filter @dock/desktop... --filter @dock/sync --filter dock
       - name: Check desktop and updater
         run: |
           mkdir -p "$DOCK_TEST_ROOT"

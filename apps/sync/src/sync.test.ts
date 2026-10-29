@@ -39,9 +39,9 @@ test("public email/password signup and sessions isolate accounts; sync writes us
     assert.equal((await request("/auth/signup", { email: "first@example.com", password })).status, 409);
     const second = syncSessionSchema.parse(await (await request("/auth/signup", { email: "second@example.com", password })).json());
     assert.equal((await request("/auth/login", { email: "first@example.com", password: "incorrect-password" })).status, 401);
-    const stored = server.database.prepare("SELECT * FROM accounts WHERE id = ?").get(first.accountId)!;
-    assert.notEqual(stored.password_hash, password);
-    assert.equal(String(stored.password_salt).length, 64);
+    const stored = server.database.prepare("SELECT password FROM auth_account WHERE userId = ? AND providerId = 'credential'").get(first.accountId)!;
+    assert.notEqual(stored.password, password);
+    assert.match(String(stored.password), /^[0-9a-f]+:[0-9a-f]+$/);
     assert.equal((await request("/sync")).status, 401);
     const mutation: SyncMutation = {
       mutationId: randomBytes(16).toString("hex"), baseVersion: 0,
@@ -63,7 +63,7 @@ test("public email/password signup and sessions isolate accounts; sync writes us
     assert.equal((await request("/sync?cursor=invalid", undefined, first.token)).status, 400);
     assert.equal((await request("/auth/logout", {}, first.token)).status, 200);
     assert.equal((await request("/sync", undefined, first.token)).status, 401);
-    server.database.prepare("UPDATE sessions SET expires_at = ? WHERE account_id = ?").run("2000-01-01T00:00:00.000Z", second.accountId);
+    server.database.prepare("UPDATE auth_session SET expiresAt = ? WHERE userId = ?").run("2000-01-01T00:00:00.000Z", second.accountId);
     assert.equal((await request("/sync", undefined, second.token)).status, 401);
     server.env.AUTH_LIMITER = { async limit() { return { success: false }; } };
     assert.equal((await request("/auth/login", { email: "first@example.com", password })).status, 429);
@@ -152,5 +152,45 @@ test("two offline clients converge after restart, preserve conflicts, sync delet
     assert.ok(a.snapshot().items.length > 0);
   } finally {
     await syncA.stop(); await syncB.stop(); a.close(); b.close(); await server.close(); rmSync(root, { recursive: true });
+  }
+});
+
+test("authentication gives actionable transport errors and allows retry without changing local data", async (t) => {
+  const root = directory();
+  const server = await startSyncFixture(root);
+  const database = new DockDatabase(join(root, "auth-retry.sqlite"));
+  const { DockSync: CoreDockSync } = await import("../../../packages/core/src/sync.ts");
+  let failure: Error | null = new TypeError("fetch failed");
+  let timeout = false;
+  const sync = new CoreDockSync(database, () => {}, "Retry test", async (url, init) => {
+    if (failure) throw failure;
+    if (timeout) return new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+    return fetch(url, init);
+  });
+  const command = { type: "sync.signup" as const, endpoint: server.endpoint, email: "retry@example.com", password };
+  try {
+    const note = save(database, { kind: "note", title: "Keep my local work" });
+    await assert.rejects(sync.authenticate(command), /Could not reach the sync server. Check your connection and try again/);
+    failure = new Error("Native transport failed");
+    failure.name = "TypeError";
+    await assert.rejects(sync.authenticate(command), /Could not reach the sync server. Check your connection and try again/);
+    assert.equal(database.syncAccount(), null);
+    assert.equal(sync.status().connected, false);
+    failure = null;
+    timeout = true;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const attempt = sync.authenticate(command);
+    t.mock.timers.tick(10_000);
+    await assert.rejects(attempt, { name: "TimeoutError", message: "The sync server took too long to respond. Try again." });
+    t.mock.timers.reset();
+    timeout = false;
+    const session = await sync.authenticate(command);
+    assert.equal(session.email, "retry@example.com");
+    assert.equal(database.snapshot().items.find(item => item.id === note.id)?.title, note.title);
+  } finally {
+    await sync.stop();
+    database.close();
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });

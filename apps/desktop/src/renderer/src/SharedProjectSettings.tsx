@@ -27,7 +27,7 @@ export function SharedProjectSettings({ project, snapshot, dispatch }: { project
   return <Popover><PopoverTrigger asChild><Button variant="outline" size="xs"><Users size="0.8125rem" />{shared ? "Members" : "Share"}</Button></PopoverTrigger>
     <PopoverContent className="shared-project-settings" align="end">
       <strong>{shared ? "Shared project" : "Share this project"}</strong>
-      {!snapshot.sync.connected ? <p>Connect your Rivnote Sync server in Preferences to share projects.</p> : <>
+      {!snapshot.sync.connected ? <p>Sign in from Preferences → Your Rivnote account to share projects.</p> : <>
         <p>Members can view, edit, and assign this project's tasks. Invite an existing account on your Rivnote Sync server. File attachments stay on their original Mac.</p>
         {shared?.members.map(member => <div className="sync-device" key={member.email}>
           <span>{member.email} · {member.role}</span>

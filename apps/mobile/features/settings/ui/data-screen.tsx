@@ -16,7 +16,7 @@ import { useDock, useCommand } from "@/lib/use-dock";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPermissionsAsync } from "expo-notifications";
 import dayjs from "dayjs";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Linking, View } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
@@ -24,6 +24,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export function DataScreen() {
   const { t } = useTranslation();
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  const backupsOnly = section === "backups";
   const query = useDock(),
     command = useCommand();
   const client = useQueryClient();
@@ -49,16 +51,16 @@ export function DataScreen() {
       <View className="flex-row items-center justify-between border-b border-border p-3">
         <Button
           variant="ghost"
-          label={t("common.cancel")}
+          label={t("account.back")}
           onPress={() => router.back()}
         />
-        <Text variant="heading">{t("production.reminderSettings")}</Text>
+        <Text variant="heading">{t(backupsOnly ? "production.backups" : "production.notifications")}</Text>
       </View>
       <KeyboardAwareScrollView
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: 20, gap: 20 }}
       >
-        <View className="gap-3">
+        {!backupsOnly && <><View className="gap-3">
           <Text variant="heading">{t("production.notifications")}</Text>
           <Text variant="muted">{t("production.remindersLocal")}</Text>
           <Text accessibilityLiveRegion="polite">
@@ -154,7 +156,8 @@ export function DataScreen() {
             />
           </View>
         )}
-        <View className="gap-3">
+        </>}
+        {backupsOnly && <View className="gap-3">
           <Text variant="heading">{t("production.backups")}</Text>
           <Button
             label={t("production.export")}
@@ -179,7 +182,7 @@ export function DataScreen() {
               />
             </View>
           ))}
-        </View>
+        </View>}
         {(action.isError || command.isError || data.isError) && (
           <Text accessibilityRole="alert" className="text-destructive">
             {action.error?.message === "notificationDenied"

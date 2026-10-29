@@ -2,6 +2,7 @@
   "name": "rivnote-sync",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-08",
+  "compatibility_flags": ["nodejs_compat"],
   "ratelimits": [
     {
       "name": "AUTH_LIMITER",

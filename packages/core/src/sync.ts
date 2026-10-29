@@ -362,7 +362,7 @@ export class DockSync {
           401: token
             ? "Your session expired or was revoked. Sign in again; local changes are safe."
             : "Email or password is incorrect.",
-          403: "The invite code is incorrect.",
+          403: "This account does not have access to this sync server.",
           409: "Unable to create this account. Try signing in.",
           429: "Too many sign-in attempts. Try again in a minute.",
         };
@@ -372,6 +372,15 @@ export class DockSync {
         );
       }
       return await response.json();
+    } catch (cause) {
+      if (controller.signal.aborted) {
+        const error = new Error("The sync server took too long to respond. Try again.");
+        error.name = "TimeoutError";
+        throw error;
+      }
+      if (cause instanceof Error && cause.name === "TypeError")
+        throw new TypeError("Could not reach the sync server. Check your connection and try again.");
+      throw cause;
     } finally {
       clearTimeout(timeout);
     }

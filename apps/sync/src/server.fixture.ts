@@ -13,19 +13,27 @@ class LocalStatement implements Statement {
   }
   bind(...values: (string | number | null)[]): LocalStatement { return new LocalStatement(this.database, this.sql, values); }
   async first<T>(): Promise<T | null> { return (this.database.prepare(this.sql).get(...this.values) as T | undefined) ?? null; }
-  async all<T>(): Promise<{ results: T[] }> { return { results: this.execute<T>() }; }
+  async all<T>() {
+    const results = this.execute<T>();
+    const meta = this.database.prepare("SELECT changes() AS changes, last_insert_rowid() AS last_row_id").get() as { changes: number; last_row_id: number };
+    return { results, meta };
+  }
   execute<T>(): T[] { return this.database.prepare(this.sql).all(...this.values) as T[]; }
 }
 
 // Runs the real Worker handler over HTTP with SQLite emulating only the D1 binding.
-export async function startSyncFixture(directory: string) {
+export async function startSyncFixture(directory: string, beforeAuthMigration?: (database: DatabaseSync) => void) {
   const database = new DatabaseSync(join(directory, "cloud.sqlite"));
   database.exec(readFileSync(new URL("../migrations/0001_sync.sql", import.meta.url), "utf8"));
   database.exec(readFileSync(new URL("../migrations/0002_collaboration.sql", import.meta.url), "utf8"));
+  beforeAuthMigration?.(database);
+  database.exec(readFileSync(new URL("../migrations/0003_better_auth.sql", import.meta.url), "utf8"));
   const env: SyncEnvironment = {
+    BETTER_AUTH_SECRET: "test-only-better-auth-secret-not-for-deployment",
     PASSWORD_PEPPER: "test-only-pepper-not-for-deployment",
     AUTH_LIMITER: { async limit() { return { success: true }; } },
     DB: {
+      async exec(sql) { database.exec(sql); },
       prepare(sql) { return new LocalStatement(database, sql); },
       async batch<T>(statements: Statement[]) {
         database.exec("BEGIN IMMEDIATE");

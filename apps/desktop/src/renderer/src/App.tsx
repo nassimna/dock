@@ -49,6 +49,7 @@ import { ActionButton, Empty, RecognizedTokens, Shortcut, TaskRow, todaySchedule
 const Notes = lazy(() => import("./Notes").then(module => ({ default: module.Notes })));
 import { Schedule } from "./Schedule";
 import { Settings } from "./Settings";
+import { SyncSettings } from "./SyncSettings";
 import { TaskEditor } from "./TaskEditor";
 import { compileFilter, compileSearch, taskComparator, parseTaskText } from "./lib/tasks";
 import { ProjectEditor, Filters, Templates, CommandMenu } from "./WorkspaceTools";
@@ -193,6 +194,7 @@ function Chrome({
 
 export function App() {
   const { snapshot, dispatch, act, error, clearError } = useDock();
+  const [accountOpen, setAccountOpen] = useState(false);
   const [view, setView] = useState<View>("today");
   const [notesMounted, setNotesMounted] = useState(false);
   const [conflictsOpen, setConflictsOpen] = useState(false);
@@ -858,7 +860,7 @@ export function App() {
             ) : view === 'trash' ? (
               <RecentlyDeleted snapshot={snapshot} dispatch={dispatch} />
             ) : view === "settings" ? (
-              <Settings snapshot={snapshot} dispatch={dispatch} act={act} onReviewConflicts={() => setConflictsOpen(true)} />
+              <Settings snapshot={snapshot} dispatch={dispatch} act={act} onAccount={() => setAccountOpen(true)} />
             ) : (
               view !== "notes" && (
                 <>
@@ -932,11 +934,11 @@ export function App() {
               <span className="status-dot" /> Saved on this{" "}
               {snapshot.system.platform === "darwin" ? "Mac" : "computer"} · Works
               offline
-              {!snapshot.sync.connected && <Button variant="ghost" className="sync-status" onClick={() => navigate("settings")}>
-                · {snapshot.sync.endpoint ? "Sign in to sync" : "Create account"}
+              {!snapshot.sync.connected && <Button variant="ghost" className="sync-status" onClick={() => setAccountOpen(true)}>
+                · Sign in to sync
               </Button>}
               {(snapshot.sync.connected || snapshot.sync.conflicts > 0) && (
-                <Button variant="ghost" className="sync-status" onClick={() => snapshot.sync.conflicts ? setConflictsOpen(true) : navigate("settings")}>
+                <Button variant="ghost" className="sync-status" onClick={() => snapshot.sync.conflicts ? setConflictsOpen(true) : setAccountOpen(true)}>
                   · {snapshot.sync.conflicts ? "Review conflicts" : snapshot.sync.phase === "synced" ? "Synced" :
                     snapshot.sync.phase === "syncing" ? "Syncing…" : snapshot.sync.phase === "offline" ? "Offline" :
                     snapshot.sync.phase === "error" ? "Sync needs attention" : "Sync pending"}
@@ -984,6 +986,8 @@ export function App() {
         ...navigation.map(item => ({ title: `Go to ${item.title}`, run: () => navigate(item.id) })),
         { title: 'Preferences', run: () => navigate('settings') }, { title: 'Recently deleted', run: () => navigate('trash') },
       ]} />}
+      {accountOpen && <SyncSettings sync={snapshot.sync} features={snapshot.syncFeatures} dispatch={dispatch}
+        onClose={() => setAccountOpen(false)} onReviewConflicts={() => { setAccountOpen(false); setConflictsOpen(true); }} />}
       {conflictsOpen && <SyncConflicts snapshot={snapshot} dispatch={dispatch}
         onClose={() => { setConflictsOpen(false); clearError(); }}
         beforeResolve={async () => {
