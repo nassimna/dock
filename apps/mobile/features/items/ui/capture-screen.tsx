@@ -375,7 +375,7 @@ function CaptureForm({
                 label={t("production.project")}
                 value={task.projectId ?? ""}
                 options={[
-                  { value: "", label: t("items.inbox") },
+                  { value: "", label: t("items.noProject") },
                   ...snapshot.workspace.projects.map((value) => ({
                     value: value.id,
                     label: value.name,

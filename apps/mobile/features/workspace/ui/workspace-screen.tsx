@@ -377,7 +377,7 @@ export function WorkspaceScreen() {
                   label={t("production.project")}
                   value={projectId}
                   options={[
-                    { value: "", label: t("items.inbox") },
+                    { value: "", label: t("items.noProject") },
                     ...workspace.projects.map((value) => ({
                       value: value.id,
                       label: value.name,

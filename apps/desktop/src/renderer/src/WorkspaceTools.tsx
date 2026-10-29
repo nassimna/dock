@@ -182,7 +182,7 @@ export function Templates({ snapshot, dispatch, projectId, onClose }: { snapshot
       <DialogTitle>Task templates</DialogTitle>
       <p className="muted">
         Apply a reusable checklist to
-        {snapshot.workspace.projects.find(project => project.id === projectId)?.name ?? 'Inbox'}.
+        {snapshot.workspace.projects.find(project => project.id === projectId)?.name ?? 'No project'}.
       </p>
       <div className="template-list">
         {snapshot.workspace.templates.map(template => <div className="detail-line" key={template.id}>

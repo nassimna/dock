@@ -63,7 +63,7 @@ export function SyncConflicts({ snapshot, dispatch, onClose, onOpenItem, beforeR
         <dt>Status</dt><dd>{item.done ? "Completed" : "Not completed"}</dd>
         <dt>Scheduled</dt><dd>{date(item.scheduledAt)}</dd>
         <dt>Deadline</dt><dd>{date(item.task.deadline)}</dd>
-        <dt>Project</dt><dd>{snapshot.workspace.projects.find(project => project.id === item.task.projectId)?.name ?? "Inbox"}</dd>
+        <dt>Project</dt><dd>{snapshot.workspace.projects.find(project => project.id === item.task.projectId)?.name ?? "No project"}</dd>
         <dt>Repeat</dt><dd>{item.recurrence}</dd>
         <dt>Reminders</dt><dd>{item.task.reminders.map(date).join(", ") || "None"}</dd>
         <dt>Assignee</dt><dd>{item.task.assignee || "None"}</dd>

@@ -20,6 +20,7 @@ import {
   FileText,
   Flag,
   Inbox,
+  FolderMinus,
   ListTodo,
   Maximize2,
   Minus,
@@ -61,11 +62,12 @@ import { useDock, type Act } from "./state";
 import brandMark from "../../../resources/brand.svg";
 
 type View =
-  "today" | "inbox" | "all" | "starred" | "notes" | "schedule" | "done" | "settings" | "project" | "filters" | "filter" | "progress" | "trash";
+  "today" | "inbox" | "unassigned" | "all" | "starred" | "notes" | "schedule" | "done" | "settings" | "project" | "filters" | "filter" | "progress" | "trash";
 const noChildren: readonly Item[] = [];
 const navigation = [
   { id: "today", title: "Today", icon: Sun },
   { id: "inbox", title: "Inbox", icon: Inbox },
+  { id: "unassigned", title: "No project", icon: FolderMinus },
   { id: "all", title: "All tasks", icon: ListTodo },
   { id: "starred", title: "Priority", icon: Flag },
   { id: "notes", title: "Notes", icon: FileText },
@@ -266,13 +268,14 @@ export function App() {
   const locale = formatting ? JSON.stringify([formatting.locale, formatting.calendar, formatting.numberingSystem, formatting.hourCycle]) : "";
   const navigationCounts = useMemo<Partial<Record<View, number>>>(() => {
     if (role !== "main") return {};
-    const counts = { today: 0, inbox: 0, all: 0, starred: 0, done: 0 };
+    const counts = { today: 0, inbox: 0, unassigned: 0, all: 0, starred: 0, done: 0 };
     for (const item of snapshot?.items ?? []) {
       if (item.kind !== "task") continue;
       if (item.done) { counts.done++; continue; }
       counts.all++;
       if (dueBy(item, today)) counts.today++;
-      if (!item.task.projectId) counts.inbox++;
+      counts.inbox++;
+      if (!item.task.projectId) counts.unassigned++;
       if (item.task.priority < 4) counts.starred++;
     }
     return counts;
@@ -312,7 +315,7 @@ export function App() {
     if (snapshot.settings.rememberLastView) {
       try {
         const saved = JSON.parse(localStorage.getItem("dock.main-navigation") ?? "null");
-        const views: View[] = ["today", "inbox", "all", "starred", "notes", "schedule", "done", "project", "filters", "filter", "progress", "trash"];
+        const views: View[] = ["today", "inbox", "unassigned", "all", "starred", "notes", "schedule", "done", "project", "filters", "filter", "progress", "trash"];
         if (saved && views.includes(saved.view) &&
             (saved.view !== "project" || snapshot.workspace.projects.some(project => project.id === saved.projectId)) &&
             (saved.view !== "filter" || snapshot.workspace.filters.some(filter => filter.id === saved.filterId))) {
@@ -562,7 +565,7 @@ export function App() {
       if (item.done) return false;
       if (query) return true;
       if (view === "today") return dueBy(item, today);
-      if (view === "inbox") return !item.task.projectId;
+      if (view === "unassigned") return !item.task.projectId;
       if (view === "starred") return item.task.priority < 4;
       if (view === "project") return item.task.projectId === projectId && !item.task.parentId;
       return true;
@@ -795,7 +798,7 @@ export function App() {
                         day: "numeric",
                       })
                     : view === "inbox"
-                      ? "Capture first. Organize when you’re ready."
+                      ? "Open tasks across all projects."
                       : view === "all"
                         ? "Everything you’ve committed to."
                         : view === "done"

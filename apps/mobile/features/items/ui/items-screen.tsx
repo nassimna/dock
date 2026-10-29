@@ -1,14 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { Icon } from "@/components/ui/icon";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DateTimeField } from "@/components/ui/date-time-field";
 import { Text } from "@/components/ui/text";
 import { useDock, useCommand } from "@/lib/use-dock";
 import { saveWorkspace } from "@/features/workspace/api/workspace";
+import { cn } from "@/lib/utils";
 import { syncStatus } from "@/lib/sync";
 import { compileFilter, compileSearch, taskComparator } from "@dock/core/tasks";
-import { appBrand, type Item } from "@dock/contracts";
+import type { Item } from "@dock/contracts";
 import { useMutation } from "@tanstack/react-query";
 import dayjs from "dayjs";
 import * as Crypto from "expo-crypto";
@@ -19,8 +20,8 @@ import {
   ActivityIndicator,
   AppState,
   FlatList,
-  Image,
   ScrollView,
+  Pressable,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -28,14 +29,15 @@ import { ItemRow } from "./item-row";
 import { useSetTaskDone } from "../mutations/mutations";
 
 export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const query = useDock(),
     toggle = useSetTaskDone(),
     command = useCommand();
-  const [filter, setFilter] = useState("today"),
+  const [filter, setFilter] = useState("inbox"),
     [search, setSearch] = useState(""),
     [space, setSpace] = useState(""),
     [tag, setTag] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
   const [now, setNow] = useState(() => dayjs());
   const [calendar, setCalendar] = useState(() =>
     dayjs().endOf("day").toISOString(),
@@ -91,7 +93,7 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
             );
           if (savedFilter) return savedFilter(item);
           if (item.done !== (filter === "done")) return false;
-          if (filter === "inbox" && item.task.projectId) return false;
+          if (filter === "unassigned" && item.task.projectId) return false;
           if (filter === "starred" && item.task.priority === 4) return false;
           if (
             filter === "today" &&
@@ -129,13 +131,15 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
     ? t("nav.notes")
     : ["today", "inbox", "all", "done"].includes(filter)
       ? t(`items.${filter}`)
-      : filter === "starred"
-        ? t("production.priority")
-        : filter === "schedule"
-          ? t("production.upcoming")
-          : (snapshot?.workspace.filters.find(
-              (value) => value.id === filter.slice(7),
-            )?.name ?? t("nav.tasks"));
+      : filter === "unassigned"
+        ? t("items.noProject")
+        : filter === "starred"
+          ? t("production.priority")
+          : filter === "schedule"
+            ? t("production.upcoming")
+            : (snapshot?.workspace.filters.find(
+                (value) => value.id === filter.slice(7),
+              )?.name ?? t("nav.tasks"));
   const empty = search.trim()
     ? "noResults"
     : isNote
@@ -173,27 +177,39 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
     );
   return (
     <SafeAreaView edges={["top"]} className="flex-1 bg-background">
-      <View className="gap-4 px-5 pb-4 pt-5">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <Image source={require("../../../assets/icon.png")} style={{ width: 32, height: 32, borderRadius: 8 }} accessibilityIgnoresInvertColors />
-            <Text className="text-xl font-extrabold tracking-tight">{i18n.language === "ar" ? appBrand.arabicName : appBrand.name}</Text>
+      <View className="gap-3 px-4 pb-3 pt-2">
+        <View className="flex-row items-center justify-between gap-3">
+          <View className="flex-1 gap-1">
+            <Text className="text-2xl font-bold tracking-tight">{title}</Text>
+            <Text variant="muted" className="text-xs">
+              {!isNote && filter === "inbox"
+                ? t("items.inboxSubtitle")
+                : now.format("dddd, D MMMM")}
+            </Text>
           </View>
           <Button
             variant="ghost"
-            icon="sync-outline"
-            label={t("production.sync")}
+            icon={
+              status?.phase === "error"
+                ? "cloud-offline-outline"
+                : "cloud-outline"
+            }
+            iconOnly
+            label={`${t("production.sync")}: ${status?.connected ? t(`syncState.${status.phase}`) : t("items.local")}`}
             onPress={() => router.push("/sync")}
           />
-        </View>
-        <View className="gap-2">
-          <Text variant="muted">{now.format("dddd, D MMMM")}</Text>
-          <Text className="text-4xl font-semibold tracking-tight">{title}</Text>
-          <Text variant="muted">
-            {status?.connected
-              ? t(`syncState.${status.phase}`)
-              : t("items.local")}
-          </Text>
+          {!isNote && (
+            <Button
+              variant={selecting ? "secondary" : "ghost"}
+              icon={selecting ? "close-outline" : "checkbox-outline"}
+              iconOnly
+              label={t(selecting ? "common.cancel" : "production.bulk")}
+              onPress={() => {
+                setSelecting(!selecting);
+                setSelected({});
+              }}
+            />
+          )}
         </View>
         {!!status?.conflicts && (
           <Button
@@ -203,14 +219,92 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
             onPress={() => router.push("/conflicts")}
           />
         )}
-        <Input
-          accessibilityLabel={t("common.search")}
-          placeholder={t("common.search")}
-          value={search}
-          onChangeText={setSearch}
-          autoCorrect={false}
-        />
+        <View className="flex-row items-center gap-2">
+          <View className="flex-1 flex-row items-center rounded-md bg-secondary px-3">
+            <Icon
+              name="search-outline"
+              size={18}
+              className="text-muted-foreground"
+            />
+            <Input
+              className="flex-1 border-0 bg-transparent py-2 text-sm"
+              accessibilityLabel={t("common.search")}
+              placeholder={t("common.search")}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+            />
+          </View>
+          <Button
+            variant={showFilters ? "secondary" : "ghost"}
+            icon="options-outline"
+            iconOnly
+            label={t("items.filters")}
+            accessibilityState={{ expanded: showFilters }}
+            onPress={() => setShowFilters(!showFilters)}
+          />
+        </View>
         {!isNote && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 6 }}
+          >
+            {(
+              [
+                ["inbox", "file-tray-outline"],
+                ["today", "today-outline"],
+                ["starred", "flag-outline"],
+                ["done", "checkmark-circle-outline"],
+              ] satisfies [string, IconName][]
+            ).map(([value, icon]) => (
+              <Pressable
+                key={value}
+                accessibilityRole="tab"
+                accessibilityLabel={t(
+                  value === "starred"
+                    ? "production.priority"
+                    : `items.${value}`,
+                )}
+                accessibilityState={{ selected: filter === value }}
+                onPress={() => {
+                  setFilter(value);
+                  setSelecting(false);
+                  setSelected({});
+                }}
+                className={cn(
+                  "min-h-11 flex-row items-center gap-2 rounded-md px-3",
+                  filter === value ? "bg-primary" : "bg-secondary",
+                )}
+              >
+                <Icon
+                  name={icon}
+                  size={16}
+                  className={
+                    filter === value
+                      ? "text-primary-foreground"
+                      : "text-muted-foreground"
+                  }
+                />
+                <Text
+                  className={cn(
+                    "text-sm font-medium",
+                    filter === value
+                      ? "text-primary-foreground"
+                      : "text-foreground",
+                  )}
+                >
+                  {t(
+                    value === "starred"
+                      ? "production.priority"
+                      : `items.${value}`,
+                  )}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
+        {!isNote && showFilters && (
           <Select
             label={t("nav.tasks")}
             value={filter}
@@ -219,6 +313,7 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
                 value,
                 label: t(`items.${value}`),
               })),
+              { value: "unassigned", label: t("items.noProject") },
               { value: "starred", label: t("production.priority") },
               { value: "schedule", label: t("production.upcoming") },
               ...(
@@ -236,7 +331,7 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
             }}
           />
         )}
-        {isNote && (
+        {isNote && showFilters && (
           <>
             <Select
               label={t("production.space")}
@@ -319,16 +414,6 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
             />
           </>
         )}
-        {!isNote && (
-          <Button
-            variant="ghost"
-            label={t(selecting ? "common.cancel" : "production.bulk")}
-            onPress={() => {
-              setSelecting(!selecting);
-              setSelected({});
-            }}
-          />
-        )}
       </View>
       {(toggle.isError || command.isError || action.isError || filterError) && (
         <Text accessibilityRole="alert" className="px-5 pb-3 text-destructive">
@@ -355,11 +440,11 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
           data={items}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{
-            paddingHorizontal: 20,
+            paddingHorizontal: 16,
             paddingBottom: 20,
             flexGrow: 1,
           }}
-          ItemSeparatorComponent={() => <View className="h-2" />}
+          ItemSeparatorComponent={() => <View className="h-px bg-border" />}
           ListEmptyComponent={
             <View className="flex-1 items-center justify-center gap-3 px-5 py-10">
               <Icon
@@ -378,6 +463,11 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
           renderItem={({ item }) => (
             <ItemRow
               item={item}
+              projectName={
+                snapshot?.workspace.projects.find(
+                  (project) => project.id === item.task.projectId,
+                )?.name
+              }
               disabled={toggle.isPending}
               onToggle={() =>
                 toggle.mutate({
@@ -455,7 +545,7 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
             value=""
             options={[
               { value: "", label: t("production.project") },
-              { value: "inbox", label: t("items.inbox") },
+              { value: "inbox", label: t("items.noProject") },
               ...(snapshot?.workspace.projects ?? []).map((value) => ({
                 value: value.id,
                 label: value.name,
@@ -515,7 +605,7 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
           />
         </ScrollView>
       ) : (
-        <View className="border-t border-border bg-background px-5 py-3">
+        <View className="border-t border-border bg-background px-4 py-2">
           <Button
             icon="add"
             label={t(isNote ? "items.addNote" : "items.addTask")}

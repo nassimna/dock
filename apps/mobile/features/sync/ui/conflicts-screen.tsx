@@ -109,7 +109,7 @@ export function ConflictsScreen() {
             {t("production.project")}:{" "}
             {dock.data?.workspace.projects.find(
               (project) => project.id === item.task.projectId,
-            )?.name ?? t("items.inbox")}
+            )?.name ?? t("items.noProject")}
           </Text>
           <Text>
             {t("production.deadline")}:{" "}

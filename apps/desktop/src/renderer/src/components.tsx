@@ -105,7 +105,7 @@ export const TaskRow = memo(function TaskRow({
     const nextId = projectId === "none" ? null : projectId;
     if (nextId !== item.task.projectId) {
       onChange(item, { task: { ...item.task, projectId: nextId, sectionId: null, assignee: "" } },
-        `Moved to ${snapshot.workspace.projects.find(project => project.id === nextId)?.name ?? "Inbox"}`);
+        `Moved to ${snapshot.workspace.projects.find(project => project.id === nextId)?.name ?? "No project"}`);
     }
     setActionsOpen(false);
   }
@@ -132,7 +132,7 @@ export const TaskRow = memo(function TaskRow({
       <Button variant="ghost" className="task-open" disabled={!!completion} onClick={() => onOpen(item)}>
         <span className="task-title">{item.title}</span>
         <span className="task-meta">
-          <span>{snapshot.workspace.projects.find(project => project.id === item.task.projectId)?.name ?? "Inbox"}</span>
+          <span>{snapshot.workspace.projects.find(project => project.id === item.task.projectId)?.name ?? "No project"}</span>
           {parent && <span className="task-parent"><CornerDownRight size="0.75rem" />{parent.title}</span>}
           {item.task.priority < 4 && <span className="priority-text"><Flag size="0.6875rem" />P{item.task.priority}</span>}
           {item.tags.map(tag => <span className="task-label" key={tag}>@{tag}</span>)}

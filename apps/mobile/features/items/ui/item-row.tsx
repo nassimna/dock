@@ -17,11 +17,13 @@ const tones = {
 export function ItemRow({
   item,
   onToggle,
+  projectName,
   disabled = false,
   selected,
   onSelect,
 }: {
   item: Item;
+  projectName?: string;
   onToggle: () => void;
   disabled?: boolean;
   selected?: boolean;
@@ -30,7 +32,7 @@ export function ItemRow({
   const { t } = useTranslation();
   const { density } = useTheme();
   return (
-    <View className="flex-row items-start rounded-md border border-border bg-card">
+    <View className="flex-row items-start bg-background">
       {item.kind === "task" && (
         <Pressable
           accessibilityRole="checkbox"
@@ -44,7 +46,7 @@ export function ItemRow({
           }
           disabled={disabled}
           onPress={onSelect ?? onToggle}
-          className="min-h-16 w-14 items-center justify-center"
+          className="min-h-14 w-11 items-center justify-center"
         >
           <Icon
             name={(selected ?? item.done) ? "checkbox" : "square-outline"}
@@ -61,25 +63,40 @@ export function ItemRow({
           (() => router.push({ pathname: "/capture", params: { id: item.id } }))
         }
         className={cn(
-          "min-h-16 flex-1 gap-1 pe-4",
-          density === "comfortable" ? "py-5" : "py-3",
+          "min-h-14 flex-1 gap-1 pe-2",
+          density === "comfortable" ? "py-3" : "py-2",
           item.kind === "note" && "ps-4",
         )}
       >
         <Text
           className={cn(
-            "font-medium",
+            "text-sm font-medium",
             item.done && "text-muted-foreground line-through",
           )}
         >
           {item.title}
         </Text>
         {!!item.body && (
-          <Text variant="muted" numberOfLines={2}>
+          <Text variant="muted" numberOfLines={1}>
             {item.body.replace(/<[^>]*>/g, " ")}
           </Text>
         )}
-        <View className="flex-row flex-wrap items-center gap-3">
+        <View className="flex-row flex-wrap items-center gap-x-3 gap-y-1">
+          {!!projectName && (
+            <View className="max-w-full flex-row items-center gap-1">
+              <Icon
+                name="folder-outline"
+                size={12}
+                className="text-muted-foreground"
+              />
+              <Text
+                numberOfLines={1}
+                className="shrink text-xs text-muted-foreground"
+              >
+                {projectName}
+              </Text>
+            </View>
+          )}
           {item.kind === "task" && (
             <Text className={cn("text-xs", tones[item.task.priority])}>
               P{item.task.priority}

@@ -23,9 +23,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: t("nav.tasks"),
+          title: t("items.inbox"),
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="checkbox-outline" color={color} size={size} />
+            <Ionicons name="file-tray-outline" color={color} size={size} />
           ),
         }}
       />
