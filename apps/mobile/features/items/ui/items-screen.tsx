@@ -176,8 +176,8 @@ export function ItemsScreen({ kind }: { kind: Item["kind"] }) {
       <View className="gap-4 px-5 pb-4 pt-5">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
-            <Image source={require("../../../assets/icon.png")} style={{ width: 32, height: 32 }} accessibilityIgnoresInvertColors />
-            <Text className="text-xl font-semibold">{i18n.language === "ar" ? appBrand.arabicName : appBrand.name}</Text>
+            <Image source={require("../../../assets/icon.png")} style={{ width: 32, height: 32, borderRadius: 8 }} accessibilityIgnoresInvertColors />
+            <Text className="text-xl font-extrabold tracking-tight">{i18n.language === "ar" ? appBrand.arabicName : appBrand.name}</Text>
           </View>
           <Button
             variant="ghost"

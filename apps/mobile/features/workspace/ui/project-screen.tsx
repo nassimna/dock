@@ -27,7 +27,7 @@ function ProjectPage({ initial }: { initial?: Project }) {
         id: Crypto.randomUUID(),
         name: "",
         parentId: null,
-        color: "#b0e5c2",
+        color: "#8b70ef",
         favorite: false,
         sections: [],
       },

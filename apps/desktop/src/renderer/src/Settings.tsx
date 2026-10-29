@@ -116,7 +116,7 @@ export function Settings({
             </div>
             <div className="floating-preview">
               <div className="floating-preview-surface"><div style={floatingStyle(draft.floating)} aria-hidden="true">
-                <div className="floating-button"><ListFilter />
+                <div className="floating-button"><span className="floating-brand" />
                   {draft.floating.showCount && <span className="floating-count">{Math.min(99, snapshot.items.filter(item => item.kind === 'task' && !item.done).length)}</span>}
                 </div>
               </div></div>

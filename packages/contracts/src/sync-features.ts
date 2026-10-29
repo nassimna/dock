@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const projectSchema = z.object({
   id: z.uuid(), name: z.string().trim().min(1).max(100),
-  parentId: z.uuid().nullable().default(null), color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#b49bdf"),
+  parentId: z.uuid().nullable().default(null), color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#8b70ef"),
   favorite: z.boolean().default(false),
   sections: z.array(z.object({ id: z.uuid(), name: z.string().trim().min(1).max(100) })).max(100).default([]),
   /** Board columns hidden in this project: section IDs, or "none" for the No section column. */

@@ -195,7 +195,7 @@ const themeColorsSchema = z.object({
 });
 export const floatingStyleSchema = z.object({
   size: z.number().int().min(28).max(72).default(36),
-  color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#2563eb"),
+  color: z.string().regex(/^#[0-9a-f]{6}$/i).default("#5639e6"),
   opacity: z.number().min(0.3).max(1).default(1),
   shape: z.enum(["circle", "rounded", "square"]).default("circle"),
   showCount: z.boolean().default(true),

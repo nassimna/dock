@@ -113,5 +113,6 @@ rejected. Older copies without a recorded original can safely be kept separately
 
 Rivnote is the new name for Dock. The Android package, signing key, database,
 MMKV and SecureStore identities stay the same, so installing the signed update
-preserves local data and sessions. Existing theme choices are preserved; new
-profiles use the River navy/teal palette.
+preserves local data and sessions. Existing custom colors and alternate palettes
+are preserved. The default River palette uses Rivnote’s violet identity in both
+light and dark mode.

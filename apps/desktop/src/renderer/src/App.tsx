@@ -20,7 +20,6 @@ import {
   FileText,
   Flag,
   Inbox,
-  ListFilter,
   ListTodo,
   Maximize2,
   Minus,
@@ -536,7 +535,7 @@ export function App() {
           if (floatingDragged.current) { floatingDragged.current = false; return; }
           act({ type: "window", action: snapshot.system.miniOpen ? "floating" : "mini" });
         }}>
-        <ListFilter size={30} />
+        <span className="floating-brand" aria-hidden="true" />
         {style.showCount && <span className="floating-count" aria-hidden="true">{count > 99 ? '99+' : count}</span>}
       </Button>
     </div>;

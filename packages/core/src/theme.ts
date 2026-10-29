@@ -4,20 +4,20 @@ type Colors = Settings["themeColors"]["dark"];
 export const colorPresets = {
   River: {
     dark: {
-      background: "#101c27",
-      card: "#192b38",
-      foreground: "#edf8f6",
-      mutedForeground: "#a0b9c3",
-      border: "#304854",
-      primary: "#5ae0c5",
+      background: "#15131d",
+      card: "#201c2e",
+      foreground: "#f3f0ff",
+      mutedForeground: "#b4adc8",
+      border: "#393249",
+      primary: "#ad9bff",
     },
     light: {
       background: "#ffffff",
-      card: "#f1f8f8",
-      foreground: "#122c38",
-      mutedForeground: "#536f7b",
-      border: "#d2e3e5",
-      primary: "#087d70",
+      card: "#f6f4ff",
+      foreground: "#241d3b",
+      mutedForeground: "#6b617f",
+      border: "#ddd7ef",
+      primary: "#5639e6",
     },
   },
   Graphite: {

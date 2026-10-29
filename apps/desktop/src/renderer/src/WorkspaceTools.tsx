@@ -12,7 +12,7 @@ import { compileFilter } from './lib/tasks';
 import { errorMessage, type Dispatch } from './state';
 import { Empty } from './components';
 export function ProjectEditor({ project, snapshot, dispatch, onClose, onSaved }: { project: Project | null; snapshot: Snapshot; dispatch: Dispatch; onClose: () => void; onSaved: (id: string) => void; }) {
-  const [draft, setDraft] = useState<Project>(() => project ?? { id: crypto.randomUUID(), name: '', parentId: null, color: '#b49bdf', favorite: false, sections: [] });
+  const [draft, setDraft] = useState<Project>(() => project ?? { id: crypto.randomUUID(), name: '', parentId: null, color: '#8b70ef', favorite: false, sections: [] });
   const [section, setSection] = useState('');
   const [failure, setFailure] = useState('');
   const [busy, setBusy] = useState(false);

@@ -10,7 +10,9 @@ test("Rivnote defaults and legacy appearance choices retain independent custom c
   assert.equal(defaults.rounding, "subtle");
   assert.equal(settingsSchema.parse({ colorPreset: "Violet" }).colorPreset, "Violet");
   assert.equal(themeStyle(defaults)["--sidebar-width"], "3.375rem");
-  assert.equal(themeStyle(defaults)["--primary"], "#5ae0c5");
+  assert.equal(themeStyle(defaults)["--primary"], "#ad9bff");
+  assert.equal(themeStyle({ ...defaults, theme: "light" })["--primary"], "#5639e6");
+  assert.equal(defaults.floating.color, "#5639e6");
   const legacy = settingsSchema.parse({ theme: "light", themeColors: { light: { primary: "#123456" }, dark: {} } });
   assert.equal(themeStyle(legacy)["--primary"], "#123456");
 });

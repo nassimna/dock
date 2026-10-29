@@ -36,11 +36,11 @@
     "Segoe UI",
     sans-serif;
   font-size: 1rem;
-  --foreground: #edf8f6;
-  --muted-foreground: #a0b9c3;
-  --border: #304854;
-  --background: #101c27;
-  --card: #192b38;
+  --foreground: #f3f0ff;
+  --muted-foreground: #b4adc8;
+  --border: #393249;
+  --background: #15131d;
+  --card: #201c2e;
   --card-foreground: var(--foreground);
   --secondary-foreground: var(--foreground);
   --accent-foreground: var(--foreground);
@@ -56,10 +56,10 @@
   --control-xs: 1.5rem;
   --hour-height: 2.5rem;
   --note-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --secondary: #242d31;
-  --primary: #5ae0c5;
-  --accent: #31483b;
-  --primary-foreground: #15291d;
+  --secondary: #363242;
+  --primary: #ad9bff;
+  --accent: #302b46;
+  --primary-foreground: #000000;
   --destructive: #ffb7a3;
   color: var(--foreground);
   background: var(--background);
@@ -69,14 +69,14 @@
   font-size: clamp(1rem, calc(0.875rem + 0.2vw), 1.125rem);
 }
 :root[data-theme="light"] {
-  --foreground: #25312d;
-  --muted-foreground: #69776f;
-  --border: #dce5df;
+  --foreground: #241d3b;
+  --muted-foreground: #6b617f;
+  --border: #ddd7ef;
   --background: #fff;
-  --card: #f8faf9;
-  --secondary: #f1f4f3;
-  --primary: #2c7650;
-  --accent: #e3f0e7;
+  --card: #f6f4ff;
+  --secondary: #eeebf5;
+  --primary: #5639e6;
+  --accent: #e1dbfb;
   --primary-foreground: #fff;
   --destructive: #ad4930;
   color-scheme: light;
@@ -175,7 +175,8 @@ kbd {
 }
 .chrome-brand strong {
   font-size: 0.8125rem;
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: -0.03em;
 }
 .chrome-brand span {
   color: var(--muted-foreground);
@@ -1436,7 +1437,7 @@ progress { width:100%; height:0.375rem; accent-color:var(--primary); }
 .floating-handle:active { cursor:grabbing; }
 .floating-button { position:relative; display:grid; place-items:center; width:var(--floating-size); height:var(--floating-size); padding:0; border-radius:var(--floating-radius); background:var(--floating-color); color:var(--floating-foreground); box-shadow:0 2px 4px #0004; touch-action:none; }
 .floating-button:hover { background:var(--floating-color); filter:brightness(0.95); }
-.floating-button > svg { width:var(--floating-glyph); height:var(--floating-glyph); }
+.floating-brand { width:var(--floating-glyph); height:var(--floating-glyph); background:currentColor; mask:url("../../../resources/brand-mark.svg") center / contain no-repeat; }
 .floating-count { position:absolute; top:-3px; right:-3px; min-width:var(--floating-badge); height:var(--floating-badge); padding:0 3px; display:grid; place-items:center; border:2px solid var(--floating-color); border-radius:12px; background:var(--floating-foreground); color:var(--floating-color); font-size:9px; font-weight:700; }
 .floating-settings-layout { display:grid; grid-template-columns:minmax(0,1fr) 7rem; align-items:start; gap:1rem; }
 .floating-preview { text-align:center; }
@@ -1616,6 +1617,7 @@ progress { width:100%; height:0.375rem; accent-color:var(--primary); }
 .sync-conflicts-dialog h2 { display: flex; align-items: center; gap: 0.5rem; }
 .brand-mark { width: 1.5rem; height: 1.5rem; flex-shrink: 0; }
 .brand-mark-large { width: 3.5rem; height: 3.5rem; }
+.startup h1 { font-weight:800; letter-spacing:-0.04em; }
 .sync-form h3 { font-size: 1.125rem; margin: 0; }
 .sync-advanced { margin-top: 0.75rem; }
 .sync-advanced summary { cursor: pointer; color: var(--muted-foreground); font-size: 0.75rem; }
