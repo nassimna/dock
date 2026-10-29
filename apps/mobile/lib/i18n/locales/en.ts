@@ -133,6 +133,10 @@ export const en = {
     unscheduled: "No date",
   },
   capture: {
+    saveFailed: "Couldn’t save task",
+    invalidFields: "Check the task fields and try again. Your changes are still here.",
+    done: "Done",
+    actions: "Task actions",
     labels: "Labels",
     moreProperties: "More properties",
     newTask: "New task",

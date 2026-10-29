@@ -138,6 +138,10 @@ export const ar: Translation & {
     unscheduled: "دون تاريخ",
   },
   capture: {
+    saveFailed: "تعذر حفظ المهمة",
+    invalidFields: "تحقق من حقول المهمة وحاول مجددًا. تغييراتك ما زالت محفوظة في النموذج.",
+    done: "تم",
+    actions: "إجراءات المهمة",
     labels: "الوسوم",
     moreProperties: "خصائص إضافية",
     newTask: "مهمة جديدة",

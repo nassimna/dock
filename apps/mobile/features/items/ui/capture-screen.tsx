@@ -4,6 +4,13 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { DateTimeField } from "@/components/ui/date-time-field";
 import { Text } from "@/components/ui/text";
+import { Sheet } from "@/components/ui/sheet";
+import { useTheme } from "@/lib/theme";
+import {
+  BottomSheetModal,
+  BottomSheetModalProvider,
+} from "@gorhom/bottom-sheet";
+import { MenuView } from "@react-native-menu/menu";
 import { useDock, useCommand } from "@/lib/use-dock";
 import { enableReminders } from "@/lib/reminders";
 import { addAttachment, openAttachment } from "@/lib/files";
@@ -17,12 +24,18 @@ import {
 import { parseTaskText } from "@dock/core/tasks";
 import dayjs from "dayjs";
 import * as Crypto from "expo-crypto";
-import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { Stack, router, useLocalSearchParams } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { storage } from "@/lib/storage";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Keyboard,
+  Pressable,
+  View,
+} from "react-native";
 import { useMutation } from "@tanstack/react-query";
 import {
   KeyboardAvoidingView,
@@ -46,7 +59,8 @@ function CaptureForm({
   projectId?: string;
   parentId?: string;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const { colors, scheme } = useTheme();
   const snapshot = useDock().data!;
   const save = useSaveItem(),
     command = useCommand();
@@ -119,7 +133,7 @@ function CaptureForm({
   );
   const [comment, setComment] = useState("");
   const [richOpen, setRichOpen] = useState(false);
-  const [propertiesOpen, setPropertiesOpen] = useState(false);
+  const properties = useRef<BottomSheetModal>(null);
   const isNote = kind === "note";
   const patch = (value: Partial<TaskProperties>) =>
     setTask((current) => ({ ...current, ...value }));
@@ -148,9 +162,6 @@ function CaptureForm({
       /* Invalid syntax remains visible so it can be edited before saving. */
     }
   };
-  const currentItem = item
-    ? snapshot.items.find((value) => value.id === item.id)
-    : undefined;
   const notes = snapshot.items.filter((value) => value.kind === "note");
   const draft = {
     ...item,
@@ -209,30 +220,164 @@ function CaptureForm({
     }, 700);
     return () => clearTimeout(timer);
   }, [content, savedContent, baseRevision]);
+  const canSave =
+    !!title.trim() && (isNote || recurrence === "none" || !!scheduledAt);
+  const busy = save.isPending || command.isPending || nativeAction.isPending;
+  const submit = () =>
+    save.mutate(draft, {
+      onSuccess: () => {
+        if (isNote) storage.remove(draftKey);
+        router.back();
+      },
+      onError: (error) => {
+        if (!isNote)
+          Alert.alert(
+            t("capture.saveFailed"),
+            error.message === "staleItem"
+              ? t("errors.staleItem")
+              : error instanceof z.ZodError
+                ? t("capture.invalidFields")
+                : t("errors.save"),
+          );
+      },
+    });
   return (
-    <SafeAreaView className="flex-1 bg-background">
+    <SafeAreaView
+      className="flex-1 bg-background"
+      edges={isNote ? undefined : ["left", "right", "bottom"]}
+    >
+      <Stack.Screen
+        options={
+          isNote
+            ? { headerShown: false }
+            : {
+                headerShown: true,
+                title: t(item ? "capture.editTask" : "capture.newTask"),
+                headerStyle: { backgroundColor: colors.background },
+                headerTintColor: colors.foreground,
+                headerShadowVisible: false,
+                gestureEnabled: true,
+                headerRight: () => (
+                  <View style={{ flexDirection: "row", alignItems: "center" }}>
+                    {item && (
+                      <MenuView
+                        themeVariant={scheme}
+                        onOpenMenu={() => Keyboard.dismiss()}
+                        isAnchoredToRight={i18n.dir() !== "rtl"}
+                        style={{
+                          minWidth: 44,
+                          minHeight: 44,
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                        actions={[
+                          ...(!item.done
+                            ? [
+                                {
+                                  id: "snooze",
+                                  title: t("production.snooze"),
+                                  attributes: { disabled: busy },
+                                },
+                              ]
+                            : []),
+                          {
+                            id: "attach",
+                            title: t("production.addAttachment"),
+                            attributes: { disabled: busy },
+                          },
+                          {
+                            id: "delete",
+                            title: t("production.delete"),
+                            attributes: { destructive: true, disabled: busy },
+                          },
+                        ]}
+                        onPressAction={({ nativeEvent }) => {
+                          if (nativeEvent.event === "delete")
+                            command.mutate(
+                              { type: "item.delete", id: item.id },
+                              { onSuccess: () => router.back() },
+                            );
+                          if (nativeEvent.event === "snooze")
+                            command.mutate(
+                              { type: "item.snooze", id: item.id, minutes: 10 },
+                              { onSuccess: () => router.back() },
+                            );
+                          if (nativeEvent.event === "attach")
+                            nativeAction.mutate(async () => {
+                              const saved = saveItem(draft);
+                              await addAttachment(saved);
+                              router.back();
+                            });
+                        }}
+                      >
+                        <View
+                          accessible
+                          accessibilityRole="button"
+                          accessibilityLabel={t("capture.actions")}
+                          accessibilityState={{ disabled: busy }}
+                          style={{
+                            minWidth: 44,
+                            minHeight: 44,
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          <Icon
+                            name="ellipsis-horizontal"
+                            color={colors.foreground}
+                            size={24}
+                          />
+                        </View>
+                      </MenuView>
+                    )}
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={t(
+                        item ? "common.save" : "capture.addTask",
+                      )}
+                      accessibilityState={{
+                        disabled: !canSave || busy,
+                        busy: save.isPending,
+                      }}
+                      disabled={!canSave || busy}
+                      onPress={submit}
+                      style={{
+                        minHeight: 44,
+                        paddingHorizontal: 12,
+                        justifyContent: "center",
+                        opacity: !canSave || busy ? 0.4 : 1,
+                      }}
+                    >
+                      {save.isPending ? (
+                        <ActivityIndicator color={colors.primary} />
+                      ) : (
+                        <Text
+                          style={{ color: colors.primary, fontWeight: "600" }}
+                        >
+                          {t("common.save")}
+                        </Text>
+                      )}
+                    </Pressable>
+                  </View>
+                ),
+              }
+        }
+      />
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <View className="flex-row items-center justify-between border-b border-border px-3 py-2">
-          <Button
-            variant="ghost"
-            label={t("common.cancel")}
-            icon={isNote ? undefined : "close-outline"}
-            iconOnly={!isNote}
-            onPress={() => router.back()}
-            disabled={save.isPending}
-          />
-          <Text
-            variant={isNote ? "heading" : "muted"}
-            className={!isNote ? "flex-1 text-center text-sm" : undefined}
-          >
-            {isNote
-              ? t(item ? "capture.editNote" : "capture.newNote")
-              : (snapshot.workspace.projects.find(
-                  (value) => value.id === task.projectId,
-                )?.name ?? t("items.inbox"))}
-          </Text>
-          <View className="w-10" />
-        </View>
+        {isNote && (
+          <View className="flex-row items-center justify-between border-b border-border px-3 py-2">
+            <Button
+              variant="ghost"
+              label={t("common.cancel")}
+              onPress={() => router.back()}
+              disabled={save.isPending}
+            />
+            <Text variant="heading">
+              {t(item ? "capture.editNote" : "capture.newNote")}
+            </Text>
+            <View className="w-10" />
+          </View>
+        )}
         <KeyboardAwareScrollView
           bottomOffset={24}
           keyboardShouldPersistTaps="handled"
@@ -406,12 +551,14 @@ function CaptureForm({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t("capture.moreProperties")}
-                  accessibilityState={{ expanded: propertiesOpen }}
-                  onPress={() => setPropertiesOpen(!propertiesOpen)}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    properties.current?.present();
+                  }}
                   className="min-h-12 flex-row items-center gap-2"
                 >
                   <Icon
-                    name={propertiesOpen ? "chevron-up" : "chevron-down"}
+                    name="options-outline"
                     size={15}
                     className="text-muted-foreground"
                   />
@@ -419,20 +566,11 @@ function CaptureForm({
                     {t("capture.moreProperties")}
                   </Text>
                 </Pressable>
-                {propertiesOpen && (
+                <Sheet
+                  sheetRef={properties}
+                  title={t("capture.moreProperties")}
+                >
                   <View className="gap-3 pb-3">
-                    {item && !item.done && (
-                      <Button
-                        variant="outline"
-                        label={t("production.snooze")}
-                        onPress={() =>
-                          command.mutate(
-                            { type: "item.snooze", id: item.id, minutes: 10 },
-                            { onSuccess: () => router.back() },
-                          )
-                        }
-                      />
-                    )}
                     <DateTimeField
                       label={t("production.deadline")}
                       value={task.deadline}
@@ -477,15 +615,19 @@ function CaptureForm({
                       ]}
                       onChange={(value) => patch({ parentId: value || null })}
                     />
-                    <Input
-                      accessibilityLabel={t("production.duration")}
-                      placeholder={t("production.duration")}
-                      value={String(task.durationMinutes)}
-                      onChangeText={(value) =>
-                        patch({ durationMinutes: Number(value) })
-                      }
-                      keyboardType="number-pad"
-                    />
+                    <View className="gap-2">
+                      <Text variant="label">{t("production.duration")}</Text>
+                      <Input
+                        inSheet
+                        accessibilityLabel={t("production.duration")}
+                        placeholder={t("production.duration")}
+                        value={String(task.durationMinutes)}
+                        onChangeText={(value) =>
+                          patch({ durationMinutes: Number(value) })
+                        }
+                        keyboardType="number-pad"
+                      />
+                    </View>
                     <Select
                       presentation="property"
                       icon="repeat-outline"
@@ -508,20 +650,26 @@ function CaptureForm({
                     />
                     {recurrence === "custom" && (
                       <>
-                        <Input
-                          accessibilityLabel={t("production.interval")}
-                          placeholder={t("production.interval")}
-                          value={String(task.repeat.interval)}
-                          onChangeText={(value) =>
-                            patch({
-                              repeat: {
-                                ...task.repeat,
-                                interval: Number(value),
-                              },
-                            })
-                          }
-                          keyboardType="number-pad"
-                        />
+                        <View className="gap-2">
+                          <Text variant="label">
+                            {t("production.interval")}
+                          </Text>
+                          <Input
+                            inSheet
+                            accessibilityLabel={t("production.interval")}
+                            placeholder={t("production.interval")}
+                            value={String(task.repeat.interval)}
+                            onChangeText={(value) =>
+                              patch({
+                                repeat: {
+                                  ...task.repeat,
+                                  interval: Number(value),
+                                },
+                              })
+                            }
+                            keyboardType="number-pad"
+                          />
+                        </View>
                         <Select
                           label={t("production.repeat")}
                           value={task.repeat.unit}
@@ -566,14 +714,18 @@ function CaptureForm({
                       ]}
                       onChange={setLinkedNoteId}
                     />
-                    <Input
-                      accessibilityLabel={t("production.assignee")}
-                      placeholder={t("production.assignee")}
-                      value={task.assignee}
-                      onChangeText={(value) => patch({ assignee: value })}
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                    />
+                    <View className="gap-2">
+                      <Text variant="label">{t("production.assignee")}</Text>
+                      <Input
+                        inSheet
+                        accessibilityLabel={t("production.assignee")}
+                        placeholder={t("production.assignee")}
+                        value={task.assignee}
+                        onChangeText={(value) => patch({ assignee: value })}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                    </View>
                     <View className="gap-3">
                       <Text variant="heading">{t("production.reminders")}</Text>
                       {task.reminders.map((value, index) => (
@@ -628,7 +780,7 @@ function CaptureForm({
                       )}
                     </View>
                   </View>
-                )}
+                </Sheet>
               </View>
               <View className="gap-2 border-t border-border pt-4">
                 <Text variant="label">{t("capture.details")}</Text>
@@ -785,22 +937,6 @@ function CaptureForm({
                     setComment("");
                   }}
                 />
-                {currentItem && (
-                  <Button
-                    variant="ghost"
-                    icon="attach-outline"
-                    className="self-start"
-                    label={t("production.addAttachment")}
-                    loading={nativeAction.isPending}
-                    onPress={() =>
-                      nativeAction.mutate(async () => {
-                        const saved = saveItem(draft);
-                        await addAttachment(saved);
-                        router.back();
-                      })
-                    }
-                  />
-                )}
               </View>
             </>
           )}
@@ -840,7 +976,7 @@ function CaptureForm({
                     nativeAction.error?.message)}
             </Text>
           )}
-          {item && (
+          {isNote && item && (
             <Button
               variant="ghost"
               label={t("production.delete")}
@@ -867,40 +1003,24 @@ function CaptureForm({
             }}
           />
         )}
-        <View className="flex-row items-center gap-3 border-t border-border px-5 py-3">
-          {!isNote && (
+        {isNote && (
+          <View className="flex-row items-center gap-3 border-t border-border px-5 py-3">
             <Button
-              variant="ghost"
-              label={t("common.cancel")}
-              onPress={() => router.back()}
-              disabled={save.isPending}
+              className="flex-1"
+              icon="checkmark"
+              label={t(
+                item
+                  ? "common.save"
+                  : isNote
+                    ? "capture.addNote"
+                    : "capture.addTask",
+              )}
+              disabled={!canSave}
+              loading={save.isPending}
+              onPress={submit}
             />
-          )}
-          <Button
-            className="flex-1"
-            icon="checkmark"
-            label={t(
-              item
-                ? "common.save"
-                : isNote
-                  ? "capture.addNote"
-                  : "capture.addTask",
-            )}
-            disabled={
-              !title.trim() ||
-              (!isNote && recurrence !== "none" && !scheduledAt)
-            }
-            loading={save.isPending}
-            onPress={() =>
-              save.mutate(draft, {
-                onSuccess: () => {
-                  if (isNote) storage.remove(draftKey);
-                  router.back();
-                },
-              })
-            }
-          />
-        </View>
+          </View>
+        )}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -937,13 +1057,15 @@ export function CaptureScreen() {
       </SafeAreaView>
     );
   return (
-    <CaptureForm
-      key={params.id ?? `${params.kind}-${params.parentId ?? ""}`}
-      item={item}
-      kind={item?.kind ?? (params.kind === "note" ? "note" : "task")}
-      today={params.today === "1"}
-      projectId={params.projectId || undefined}
-      parentId={params.parentId || undefined}
-    />
+    <BottomSheetModalProvider>
+      <CaptureForm
+        key={params.id ?? `${params.kind}-${params.parentId ?? ""}`}
+        item={item}
+        kind={item?.kind ?? (params.kind === "note" ? "note" : "task")}
+        today={params.today === "1"}
+        projectId={params.projectId || undefined}
+        parentId={params.parentId || undefined}
+      />
+    </BottomSheetModalProvider>
   );
 }

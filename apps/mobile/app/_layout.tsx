@@ -13,6 +13,7 @@ import { ThemeProvider, useTheme } from "@/lib/theme";
 import { initializeThemePreference } from "@/lib/theme-preference";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack, router } from "expo-router";
+import { LocaleDirContext } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
 import { useEffect, useState } from "react";
@@ -99,18 +100,20 @@ function AppShell() {
           />
         </View>
       )}
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      >
-        <Stack.Screen name="(main)" />
-        <Stack.Screen
-          name="capture"
-          options={{ presentation: "modal", gestureEnabled: false }}
-        />
-      </Stack>
+      <LocaleDirContext.Provider value={i18n.dir()}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+          }}
+        >
+          <Stack.Screen name="(main)" />
+          <Stack.Screen
+            name="capture"
+            options={{ presentation: "modal", gestureEnabled: false }}
+          />
+        </Stack>
+      </LocaleDirContext.Provider>
     </View>
   );
 }

@@ -15,7 +15,7 @@ const selected = variants[variant as keyof typeof variants];
 const config: ExpoConfig = {
   name: selected.name,
   slug: "dock-mobile",
-  version: "0.2.5",
+  version: "0.2.6",
   scheme: "dockmobile",
   orientation: "portrait",
   userInterfaceStyle: "automatic",
@@ -31,7 +31,7 @@ const config: ExpoConfig = {
   ios: { supportsTablet: true, bundleIdentifier: selected.applicationId },
   android: {
     package: selected.applicationId,
-    versionCode: 9,
+    versionCode: 10,
     edgeToEdgeEnabled: true,
     adaptiveIcon: {
       foregroundImage: "./assets/adaptive-icon.png",
