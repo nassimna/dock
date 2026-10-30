@@ -1,6 +1,6 @@
 import { parseTaskText } from "@dock/core/tasks";
 import { itemInputSchema, type Item, type ItemInput } from "@dock/contracts";
-import { getSnapshot } from "../../../lib/database.ts";
+import { getDatabase, getSnapshot } from "../../../lib/database.ts";
 import { execute } from "../../../lib/actions.ts";
 
 export function listItems(): Item[] {
@@ -10,7 +10,7 @@ export function listItems(): Item[] {
 export function saveItem(input: ItemInput): Item {
   let data = itemInputSchema.parse(input);
   if (!data.id && data.kind === "task") {
-    const parsed = parseTaskText(data.title, getSnapshot().workspace);
+    const parsed = parseTaskText(data.title, getDatabase().workspace());
     data = itemInputSchema.parse({
       ...data,
       title: parsed.title,
@@ -21,14 +21,12 @@ export function saveItem(input: ItemInput): Item {
       tags: [...(data.tags ?? []), ...parsed.tags],
     });
   }
-  const current = listItems();
   if (
     data.id &&
-    current.find((item) => item.id === data.id)?.revision !==
-      data.expectedRevision
+    getDatabase().getItem(data.id)?.revision !== data.expectedRevision
   )
     throw new Error("staleItem");
-  const ids = new Set(current.map((item) => item.id));
+  const ids = new Set(data.id ? [] : listItems().map((item) => item.id));
   const result = execute({ type: "item.save", item: data });
   return result.items.find((item) =>
     data.id ? item.id === data.id : !ids.has(item.id),

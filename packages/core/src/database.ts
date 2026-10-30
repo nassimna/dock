@@ -159,6 +159,17 @@ export class DockDatabase {
     });
   }
 
+  getItem(id: string): Item | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM items WHERE id = ? AND deleted_at IS NULL")
+      .get(id) as Row | undefined;
+    if (!row) return undefined;
+    const item = this.item(row);
+    return this.hiddenProjectIds().includes(item.task.projectId ?? "")
+      ? undefined
+      : item;
+  }
+
   snapshot(): StoreSnapshot {
     const hidden = new Set(this.hiddenProjectIds());
     const rows = this.db

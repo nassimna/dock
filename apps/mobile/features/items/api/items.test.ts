@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { beforeEach, after, afterEach, mock, test } from "node:test";
 import { DockDatabase } from "@dock/core/database";
-import type { DataCommand } from "@dock/contracts";
+import { projectSchema, type DataCommand } from "@dock/contracts";
 
 const parent = resolve("../../.validation");
 mkdirSync(parent, { recursive: true });
@@ -18,7 +18,10 @@ const runtime = {
     new Uint8Array(createHash("sha256").update(value).digest()),
 };
 mock.module("../../../lib/database.ts", {
-  namedExports: { getSnapshot: () => database.snapshot() },
+  namedExports: {
+    getDatabase: () => database,
+    getSnapshot: () => database.snapshot(),
+  },
 });
 mock.module("../../../lib/actions.ts", {
   namedExports: {
@@ -45,15 +48,23 @@ test("tasks and rich notes preserve priority and metadata across edits and SQLit
     title: "Rich note",
     body: '<aside data-type="callout" data-emoji="💡"><p>Keep this</p></aside>',
   });
+  const snapshot = mock.method(database, "snapshot");
   const edited = saveItem({
     ...task,
     expectedRevision: task.revision,
     title: "Ready for review",
   });
+  assert.equal(snapshot.mock.callCount(), 1);
+  snapshot.mock.restore();
   assert.equal(task.title, "Prepare mobile handoff");
   assert.equal(edited.task.priority, 2);
   assert.equal(edited.body, "Check capture");
   assert.equal(edited.createdAt, task.createdAt);
+  assert.equal(
+    database.pendingChanges().find((change) => change.item.id === task.id)?.item
+      .title,
+    "Ready for review",
+  );
   database.close();
   database = new DockDatabase(new DatabaseSync(filename), runtime);
   assert.equal(
@@ -107,14 +118,50 @@ test("invalid input and stale edits/toggles never replace newer saved content", 
   const item = saveItem({ kind: "task", title: "Original" });
   saveItem({ ...item, expectedRevision: item.revision, title: "Latest" });
   assert.throws(() => saveItem({ kind: "note", title: "   " }));
-  assert.throws(() =>
-    saveItem({ ...item, expectedRevision: item.revision, title: "Stale" }),
+  assert.throws(
+    () =>
+      saveItem({ ...item, expectedRevision: item.revision, title: "Stale" }),
+    /staleItem/,
   );
   assert.throws(
     () => setTaskDone({ id: item.id, revision: item.revision, done: true }),
     /staleItem/,
   );
   assert.equal(listItems()[0]?.title, "Latest");
+});
+
+test("deleted and inaccessible shared-project items remain unavailable to edits", () => {
+  const deleted = saveItem({ kind: "task", title: "Deleted task" });
+  database.execute({ type: "item.delete", id: deleted.id });
+  assert.equal(database.getItem(deleted.id), undefined);
+  assert.throws(
+    () =>
+      saveItem({
+        ...deleted,
+        expectedRevision: deleted.revision,
+        title: "Restore accidentally",
+      }),
+    /staleItem/,
+  );
+
+  const project = projectSchema.parse({ id: randomUUID(), name: "Shared" });
+  database.applySharedProjects([project], [project.id]);
+  const shared = saveItem({
+    kind: "task",
+    title: "Shared task",
+    task: { projectId: project.id },
+  });
+  database.applySharedProjects([], []);
+  assert.equal(database.getItem(shared.id), undefined);
+  assert.throws(
+    () =>
+      saveItem({
+        ...shared,
+        expectedRevision: shared.revision,
+        title: "Edit without access",
+      }),
+    /staleItem/,
+  );
 });
 
 test("saving quick capture directly parses date, priority and labels without requiring blur", () => {
